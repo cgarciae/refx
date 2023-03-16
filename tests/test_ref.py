@@ -9,140 +9,137 @@ import refx
 
 class TestPytreeRef:
     def test_ref(self):
-        p1 = refx.PytreeRef(1)
-        assert p1.value == 1
+        r1 = refx.Ref(1)
+        assert r1.value == 1
 
         def add_one(r):
             r.value += 1
             return r
 
-        p2 = jax.tree_map(add_one, p1)
+        r2 = jax.tree_map(add_one, r1)
 
-        assert p1.value == 2
-        assert p2.value == 2
-        assert p1 is not p2
-        assert p1.ref is p2.ref
+        assert r1.value == 2
+        assert r2.value == 2
+        assert r1 is r2
 
-        p1.value = 3
+        r1.value = 3
 
-        assert p1.value == 3
-        assert p2.value == 3
+        assert r1.value == 3
+        assert r2.value == 3
 
     def test_ref_context(self):
-        p1 = refx.PytreeRef(1)
-        p2 = jax.tree_map(lambda x: x, p1)  # copy
-        assert p1.value == 1
-        assert p2.value == 1
-        p1.value = 2  # OK
-        assert p2.value == 2
+        r1 = refx.Ref(1)
+        r2 = jax.tree_map(lambda x: x, r1)  # copy
+        assert r1.value == 1
+        assert r2.value == 1
+        r1.value = 2  # OK
+        assert r2.value == 2
 
         with refx.incremented_ref():
             with pytest.raises(
                 ValueError, match="Cannot mutate ref from different context"
             ):
-                p1.value = 3
+                r1.value = 3
 
-            p1, p2 = refx.clone_references((p1, p2))
-            assert p1.value == 2
-            p2.value = 3  # OK
-            assert p1.value == 3
+            r1, r2 = refx.clone_references((r1, r2))
+            assert r1.value == 2
+            r2.value = 3  # OK
+            assert r1.value == 3
 
         with pytest.raises(
             ValueError, match="Cannot mutate ref from different context"
         ):
-            p1.value = 4
+            r1.value = 4
 
         with pytest.raises(
             ValueError, match="Cannot clone ref from higher context level"
         ):
-            p1, p2 = refx.clone_references((p1, p2))
+            r1, r2 = refx.clone_references((r1, r2))
 
     def test_ref_trace_level(self):
-        p1: refx.PytreeRef[int] = refx.PytreeRef(1)
+        r1: refx.Ref[int] = refx.Ref(1)
 
         @jax.jit
         def f():
             with pytest.raises(
                 ValueError, match="Cannot mutate ref from different trace level"
             ):
-                p1.value = 2
+                r1.value = 2
             return 1
 
         f()
 
         @refx.cross_barrier(jax.jit)
-        def g(p2: refx.PytreeRef[int], p3: refx.PytreeRef[int]):
-            assert p2.ref is p3.ref
+        def g(r2: refx.Ref[int], r3: refx.Ref[int]):
+            assert r2 is r3
 
-            p2.value = 2
-            assert p1.ref is not p2.ref
-            assert p1.id is p2.id
-            return p2
+            r2.value = 2
+            assert r1 is not r2
+            assert r1.id is r2.id
+            return r2
 
-        p2 = g(p1, p1)
-        p2_ref = p2.ref
+        r2 = g(r1, r1)
 
-        assert p1.value == 2
-        assert p2.value == 2
+        assert r1.value == 2
+        assert r2.value == 2
 
-        p2.value = 3
-        assert p1.value == 3
-        assert p2.value == 3
+        r2.value = 3
+        assert r1.value == 3
+        assert r2.value == 3
 
-        p3 = g(p1, p1)
-        p3_ref = p3.ref
+        r3 = g(r1, r1)
 
-        assert p3_ref is p2_ref
-        assert p3.value == 2
+        assert r3 is r2
+        assert r3.value == 2
 
         @jax.jit
         def h():
-            p4 = refx.clone_references(p3)
+            p4 = refx.clone_references(r3)
             with jax.ensure_compile_time_eval():
                 assert p4.value == 2
-            assert p4.ref is not p3.ref
-            assert p4.id is not p3.id
+            assert p4.ref is not r3.ref
+            assert p4.id is not r3.id
             p4.value = 5
             assert p4.value == 5
 
         h()
 
     def test_cross_barrier(self):
-        p1: refx.PytreeRef[int] = refx.PytreeRef(1)
+        r1: refx.Ref[int] = refx.Ref(1)
 
         @refx.cross_barrier(jax.jit)
-        def g(p2: refx.PytreeRef[int]):
-            p2.value += 1
-            assert p1.ref is not p2.ref
-            return p2
+        def g(r2: refx.Ref[int]):
+            r2.value += 1
+            assert r1.ref is not r2.ref
+            return r2
 
-        p2 = g(p1)
-        assert p1.ref is p2.ref
-        assert p1.value == 2
-        assert p2.value == 2
+        r2 = g(r1)
+        assert r1.ref is r2.ref
+        assert r1.value == 2
+        assert r2.value == 2
 
-        p2 = g(p1)
-        assert p1.ref is p2.ref
-        assert p1.value == 3
-        assert p2.value == 3
+        r2 = g(r1)
+        assert r1.ref is r2.ref
+        assert r1.value == 3
+        assert r2.value == 3
 
         # test passing a reference to a jitted function without refx.cross_barrier
         @jax.jit
-        def f(p1):
+        def f(r1):
             return None
 
         with pytest.raises(TypeError, match="Cannot interpret value of type"):
-            f(p1)
+            f(r1)
 
-        assert isinstance(p1.value, jax.Array)
-        assert p1.value == 3
+        assert isinstance(r1.value, jax.Array)
+        assert r1.value == 3
 
 
 class TestRefField:
     def test_ref_field_dataclass(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = refx.field(type=refx.PytreeRef[int])
+            a: int = refx.field(type=refx.Ref[int])
 
         foo1 = Foo(a=1)
         foo1.a = 2
@@ -159,7 +156,7 @@ class TestRefField:
 
     def test_ref_field_normal_class(self):
         class Foo(Pytree):
-            a = refx.field(type=refx.PytreeRef[int])
+            a = refx.field(type=refx.Ref[int])
 
             def __init__(self, a: int):
                 pass

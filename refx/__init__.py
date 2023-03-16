@@ -1,5 +1,4 @@
 from .ref import (
-    PytreeRef,
     Ref,
     clone_references,
     cross_barrier,
@@ -7,3 +6,12 @@ from .ref import (
 )
 
 from .fields import RefField, field
+
+__all__ = [
+    "Ref",
+    "RefField",
+    "clone_references",
+    "cross_barrier",
+    "field",
+    "incremented_ref",
+]

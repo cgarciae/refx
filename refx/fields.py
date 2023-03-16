@@ -1,14 +1,14 @@
 import typing as tp
 import dataclasses
-from refx.ref import Base
+from refx.ref import Ref
 
 A = tp.TypeVar("A")
 
 
 class RefField(dataclasses.Field, tp.Generic[A]):
-    def __init__(self, *, default, base_type: tp.Type[Base[A]], **kwargs):
+    def __init__(self, *, default, ref_type: tp.Type[Ref[A]], **kwargs):
         super().__init__(default, **kwargs)
-        self.base_type = base_type
+        self.ref_type = ref_type
         self.__first_get_request = True
 
     def __set_name__(self, owner, name):
@@ -34,18 +34,18 @@ class RefField(dataclasses.Field, tp.Generic[A]):
             return
 
         if hasattr(obj, f"_ref_{self.name}"):
-            ref: Base[A] = getattr(obj, f"_ref_{self.name}")
+            ref: Ref[A] = getattr(obj, f"_ref_{self.name}")
             ref.value = value
-        elif isinstance(value, Base):
-            raise ValueError("Cannot change Base")
+        elif isinstance(value, Ref):
+            raise ValueError("Cannot change Ref")
         else:
-            obj.__dict__[f"_ref_{self.name}"] = self.base_type(value)
+            obj.__dict__[f"_ref_{self.name}"] = self.ref_type(value)
 
 
 def field(
-    default: tp.Union[A, Base[A], dataclasses._MISSING_TYPE] = dataclasses.MISSING,
+    default: tp.Union[A, dataclasses._MISSING_TYPE] = dataclasses.MISSING,
     *,
-    type: tp.Type[Base[A]],
+    type: tp.Type[Ref[A]],
     pytree_node: bool = True,
     default_factory: tp.Any = dataclasses.MISSING,
     init: bool = True,
@@ -66,7 +66,7 @@ def field(
 
     return RefField(
         default=default,
-        base_type=type,
+        ref_type=type,
         default_factory=default_factory,
         init=init,
         repr=repr,
