@@ -41,7 +41,7 @@ class TestPytreeRef:
             ):
                 r1.value = 3
 
-            r1, r2 = refx.clone_references((r1, r2))
+            r1, r2, _ = refx.clone_references((r1, r2, "foo"))
             assert r1.value == 2
             r2.value = 3  # OK
             assert r1.value == 3
@@ -55,6 +55,23 @@ class TestPytreeRef:
             ValueError, match="Cannot clone ref from higher context level"
         ):
             r1, r2 = refx.clone_references((r1, r2))
+
+    def test_clone_leakage_error(self):
+        r1 = None
+
+        @jax.jit
+        def f():
+            nonlocal r1
+            x = jax.numpy.empty(1)
+            r1 = refx.Ref(x)
+            return x
+
+        f()
+
+        with pytest.raises(
+            ValueError, match="Cannot clone ref from higher trace level"
+        ):
+            r2 = refx.clone_references(r1)
 
     def test_ref_trace_level(self):
         r1: refx.Ref[int] = refx.Ref(1)
@@ -166,6 +183,22 @@ class TestPytreeRef:
 
         assert n == 2
 
+    def test_deref_number_of_fields(self):
+        r1 = refx.Ref(1)
+        r2 = refx.Ref(2)
+        v1 = 3
+        pytree = {
+            "a": [r1, r2, v1],
+            "b": {"c": r1, "d": r2},
+        }
+        assert len(jax.tree_util.tree_leaves(pytree)) == 5
+
+        pytree = refx.deref(pytree)
+        assert len(jax.tree_util.tree_leaves(pytree)) == 3
+
+        pytree = refx.reref(pytree)
+        assert len(jax.tree_util.tree_leaves(pytree)) == 5
+
 
 class TestRefField:
     def test_ref_field_dataclass(self):
@@ -185,6 +218,16 @@ class TestRefField:
 
         assert foo1.a == 3
         assert foo2.a == 3
+
+    def test_cannot_change_ref(self):
+        @dataclasses.dataclass
+        class Foo(Pytree):
+            a: int = refx.field(type=refx.Ref[int])
+
+        foo1 = Foo(a=1)
+
+        with pytest.raises(ValueError, match="Cannot change Ref"):
+            foo1.a = refx.Ref(2)
 
     def test_ref_field_normal_class(self):
         class Foo(Pytree):
@@ -206,6 +249,15 @@ class TestRefField:
         assert foo1.a == 3
         assert foo2.a == 3
 
+    def test_unset_field(self):
+        class Foo(Pytree):
+            a = refx.field(type=refx.Ref[int])
+
+        foo1 = Foo()
+
+        with pytest.raises(AttributeError, match="Attribute 'a' is not set"):
+            foo1.a
+
     def test_barrier(self):
         @dataclasses.dataclass
         class Foo(Pytree):
@@ -221,3 +273,10 @@ class TestRefField:
         foo2 = g(foo1)
         assert foo1.a == 1
         assert foo2.a == 2
+
+    def test_send_pytree_node_in_metdata(self):
+        with pytest.raises(ValueError, match="'pytree_node' found in metadata"):
+
+            @dataclasses.dataclass
+            class Foo(Pytree):
+                a: int = refx.field(type=refx.Ref[int], metadata={"pytree_node": False})

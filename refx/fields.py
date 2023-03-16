@@ -25,19 +25,16 @@ class RefField(dataclasses.Field, tp.Generic[A]):
                 raise AttributeError
 
         if not hasattr(obj, f"_ref_{self.name}"):
-            raise AttributeError(f"Attribute {self.name} is not set")
+            raise AttributeError(f"Attribute '{self.name}' is not set")
 
         return getattr(obj, f"_ref_{self.name}").value
 
     def __set__(self, obj, value):
-        if isinstance(value, RefField):
-            return
-
-        if hasattr(obj, f"_ref_{self.name}"):
+        if isinstance(value, Ref):
+            raise ValueError("Cannot change Ref")
+        elif hasattr(obj, f"_ref_{self.name}"):
             ref: Ref[A] = getattr(obj, f"_ref_{self.name}")
             ref.value = value
-        elif isinstance(value, Ref):
-            raise ValueError("Cannot change Ref")
         else:
             obj.__dict__[f"_ref_{self.name}"] = self.ref_type(value)
 

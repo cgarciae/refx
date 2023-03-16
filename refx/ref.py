@@ -18,7 +18,15 @@ class Nothing:
     pass
 
 
-NOTHING = Nothing()
+def _flatten_nothing(_: Nothing) -> tp.Tuple[tp.Tuple[()], None]:
+    return (), None
+
+
+def _unflatten_nothing(_: None, __: tp.Tuple[()]) -> Nothing:
+    return Nothing()
+
+
+jax.tree_util.register_pytree_node(Nothing, _flatten_nothing, _unflatten_nothing)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -103,7 +111,9 @@ def deref(pytree: A) -> A:
         if isinstance(ref, Ref):
             if ref not in ref_index:
                 ref_index[ref] = len(ref_index)
-            return ValueIndex(ref.value, index=ref_index[ref])
+                return ValueIndex(ref.value, index=ref_index[ref])
+            else:
+                return ValueIndex(Nothing(), index=ref_index[ref])
         return ref
 
     return jax.tree_map(deref_fn, pytree)
@@ -114,8 +124,17 @@ def reref(pytree: A) -> A:
 
     def reref_fn(value_index: tp.Any) -> tp.Any:
         if isinstance(value_index, ValueIndex):
+            # NOTE: because pytree flatten and unflatten in a deterministic
+            # order, this should probably never trigger
             if value_index.index not in index_ref:
+                assert not isinstance(value_index.value, Nothing)
                 index_ref[value_index.index] = Ref(value_index.value)
+            elif not isinstance(value_index.value, Nothing):
+                # index_ref[value_index.index].value = value_index.value
+                raise RuntimeError(
+                    "BUG: Got multiple values for the same index. This should never "
+                    "happen, please report it."
+                )
             ref = index_ref[value_index.index]
             return ref
         return value_index
