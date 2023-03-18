@@ -1,11 +1,14 @@
 # Taken from flax/core/tracer.py 🏴‍☠️
 
+from functools import partial
 import jax
+import jax.core
+from jax._src.core import _why_alive
 
 
 def current_trace():
     """Returns the innermost Jax tracer."""
-    return jax.core.find_top_trace(())
+    return jax.core.find_top_trace(()).main
 
 
 def trace_level(main):

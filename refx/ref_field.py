@@ -6,51 +6,54 @@ A = tp.TypeVar("A")
 
 
 class RefField(dataclasses.Field, tp.Generic[A]):
-    def __init__(self, *, default, ref_type: tp.Type[Ref[A]], **kwargs):
-        super().__init__(default, **kwargs)
-        self.ref_type = ref_type
-        self.__first_get_request = True
+    def __init__(self, ref_type: tp.Type[Ref[A]], **kwargs):
+        super().__init__(**kwargs)
+        self._ref_type = ref_type
+        self._first_get_call = True
+        self.class_field_name: tp.Optional[str] = None
 
     def __set_name__(self, owner, name):
         """__set_name__ initializer for properties as per [PEP-487](https://peps.python.org/pep-0487/)"""
-        self.name = name
-        self.__name = "__" + self.name
+        self.class_field_name = name
+
+    @property
+    def object_field_name(self):
+        return f"_ref__{self.class_field_name}"
 
     def __get__(self, obj, objtype=None):
         if obj is None:
-            if self.__first_get_request:
-                self.__first_get_request = False
+            if self._first_get_call:
+                self._first_get_call = False
                 return self
             else:
                 raise AttributeError
 
-        if not hasattr(obj, f"_ref_{self.name}"):
-            raise AttributeError(f"Attribute '{self.name}' is not set")
+        if not hasattr(obj, self.object_field_name):
+            raise AttributeError(f"Attribute '{self.class_field_name}' is not set")
 
-        return getattr(obj, f"_ref_{self.name}").value
+        return getattr(obj, self.object_field_name).value
 
     def __set__(self, obj, value):
         if isinstance(value, Ref):
             raise ValueError("Cannot change Ref")
-        elif hasattr(obj, f"_ref_{self.name}"):
-            ref: Ref[A] = getattr(obj, f"_ref_{self.name}")
+        elif hasattr(obj, self.object_field_name):
+            ref: Ref[A] = getattr(obj, self.object_field_name)
             ref.value = value
         else:
-            obj.__dict__[f"_ref_{self.name}"] = self.ref_type(value)
+            obj.__dict__[self.object_field_name] = self._ref_type(value)
 
 
-def field(
-    default: tp.Union[A, dataclasses._MISSING_TYPE] = dataclasses.MISSING,
+def ref_field(
+    default: tp.Any = dataclasses.MISSING,
     *,
-    type: tp.Type[Ref[A]],
-    pytree_node: bool = True,
+    ref_type: tp.Type[Ref[tp.Any]] = Ref,
     default_factory: tp.Any = dataclasses.MISSING,
     init: bool = True,
     repr: bool = True,
     hash: tp.Optional[bool] = None,
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
-) -> A:
+) -> tp.Any:
     if metadata is None:
         metadata = {}
     else:
@@ -59,11 +62,11 @@ def field(
     if "pytree_node" in metadata:
         raise ValueError("'pytree_node' found in metadata")
 
-    metadata["pytree_node"] = pytree_node
+    metadata["pytree_node"] = True
 
     return RefField(
+        ref_type=ref_type,
         default=default,
-        ref_type=type,
         default_factory=default_factory,
         init=init,
         repr=repr,

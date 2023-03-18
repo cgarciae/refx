@@ -4,10 +4,11 @@ version = "0.0.0"
 description = ""
 authors = ["Cristian Garcia <cgarcia.e88@gmail.com>"]
 readme = "README.md"
+packages = [{ include = "refx" }, { include = "nnx" }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-simple-pytree = {path = "../simple-pytree", develop = true}
+simple-pytree = { path = "../simple-pytree", develop = true }
 
 
 [tool.poetry.group.dev.dependencies]
