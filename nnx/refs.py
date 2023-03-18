@@ -8,11 +8,13 @@ A = tp.TypeVar("A")
 # ----------------------------------------
 # Refs
 # ----------------------------------------
-class Param(refx.Ref[A]):
-    pass
 
 
 class BatchStat(refx.Ref[A]):
+    pass
+
+
+class Param(refx.Ref[A]):
     pass
 
 

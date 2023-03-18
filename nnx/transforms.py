@@ -7,18 +7,19 @@ from typing import (
     Hashable,
     Iterable,
     List,
+    Literal,
     Optional,
     Sequence,
     Tuple,
     Type,
     TypeVar,
     Union,
+    overload,
 )
 import jax
 import jax.stages
 import refx
 from jax._src.interpreters import pxla
-import simple_pytree as spt
 
 from nnx.refs import Param
 
@@ -100,18 +101,19 @@ def jit(
     return ref_jit
 
 
-def partition(pytree, *predicates: Callable[[Any], bool]):
+def partition(pytree, *type_predicates: Tuple[Type[refx.Ref[Any]], ...]):
     leaves, treedef = jax.tree_util.tree_flatten(pytree)
-    predicates = predicates
 
     # we have n + 1 partitions, where n is the number of predicates
     # the last partition is for values that don't match any predicate
     partitions: Tuple[List[Any]] = tuple(
-        [NOTHING] * len(leaves) for _ in range(len(predicates) + 1)
+        [NOTHING] * len(leaves) for _ in range(len(type_predicates) + 1)
     )
     for j, leaf in enumerate(leaves):
-        for i, predicate in enumerate(predicates):
-            if predicate(leaf):
+        for i, predicate in enumerate(type_predicates):
+            if (isinstance(leaf, refx.Ref) and isinstance(leaf, predicate)) or (
+                isinstance(leaf, refx.Deref) and issubclass(leaf.ref_type, predicate)
+            ):
                 partitions[i][j] = leaf
                 break
         else:
@@ -135,7 +137,12 @@ def merge_partitions(partitions, treedef):
 
 
 class RefGrad:
-    def __init__(self, fun, partition_fn, **grad_kwargs):
+    def __init__(
+        self,
+        fun: Callable[..., Any],
+        type_predicate: Tuple[Type[refx.Ref[Any]], ...],
+        **grad_kwargs,
+    ):
         @functools.partial(jax.grad, **grad_kwargs)
         def grad_fn(diff, non_diff, treedef, *args, **kwargs):
             diff, non_diff = refx.reref((diff, non_diff))
@@ -145,11 +152,11 @@ class RefGrad:
             return out
 
         self.grad_fn = grad_fn
-        self.partition_fn = partition_fn
+        self.type_predicate = type_predicate
         self.has_aux: bool = grad_kwargs["has_aux"]
 
     def __call__(self, pytree, *args, **kwargs):
-        (diff, non_diff), treedef = partition(pytree, self.partition_fn)
+        (diff, non_diff), treedef = partition(pytree, self.type_predicate)
         diff, non_diff = refx.deref((diff, non_diff))
         grads = self.grad_fn(diff, non_diff, treedef, *args, **kwargs)
 
@@ -168,32 +175,57 @@ def is_param(x):
     return isinstance(x, Param)
 
 
-PredicateOrType = Union[Callable[[Any], bool], type, List[type]]
+TypeOrSeqType = Union[Type[refx.Ref[Any]], Sequence[Type[refx.Ref[Any]]]]
+
+
+@overload
+def grad(
+    fun: Callable[..., Any],
+    type_predicate: TypeOrSeqType = Param,
+    *,
+    has_aux: Literal[False] = False,
+    argnums: Union[int, Sequence[int]] = 0,
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: Sequence[AxisName] = (),
+) -> Callable[..., Any]:
+    ...
+
+
+@overload
+def grad(
+    fun: Callable[..., Any],
+    type_predicate: TypeOrSeqType = Param,
+    *,
+    has_aux: Literal[True],
+    argnums: Union[int, Sequence[int]] = 0,
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: Sequence[AxisName] = (),
+) -> Callable[..., Tuple[Any, Any]]:
+    ...
 
 
 def grad(
-    fun: F,
-    partition_fn: PredicateOrType = Param,
+    fun: Callable[..., Any],
+    type_predicate: TypeOrSeqType = Param,
+    *,
     argnums: Union[int, Sequence[int]] = 0,
     has_aux: bool = False,
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: Sequence[AxisName] = (),
-) -> F:
+) -> Callable[..., Union[Tuple[Any, Any], Any]]:
     # if its a type
-    if isinstance(partition_fn, type):
-        _partition_fn = lambda x: isinstance(x, partition_fn)
-    # if its a list of types
-    elif isinstance(partition_fn, list):
-        _partition_fn = lambda x: isinstance(x, tuple(partition_fn))
-    elif callable(partition_fn):
-        _partition_fn = partition_fn
-    else:
-        raise ValueError(f"Invalid partition_fn: {partition_fn}")
+    if isinstance(type_predicate, type):
+        type_predicate = (type_predicate,)
+
+    if not isinstance(type_predicate, tuple):
+        type_predicate = tuple(type_predicate)
 
     ref_grad = RefGrad(
         fun,
-        _partition_fn,
+        type_predicate,
         argnums=argnums,
         has_aux=has_aux,
         holomorphic=holomorphic,

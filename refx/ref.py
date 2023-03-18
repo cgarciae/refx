@@ -1,3 +1,4 @@
+from abc import abstractmethod
 import dataclasses
 import typing as tp
 
@@ -12,13 +13,23 @@ F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 
 class Deref(tp.Generic[A]):
     index: int
+    ref_type: type
+
+    @property
+    @abstractmethod
+    def value(self) -> A:
+        ...
 
 
 @dataclasses.dataclass(frozen=True)
 class Value(Deref[A]):
-    value: A
+    _value: A
     index: int
     ref_type: type
+
+    @property
+    def value(self) -> A:
+        return self._value
 
 
 def _value_index_flatten(
@@ -50,16 +61,21 @@ else:
 @dataclasses.dataclass(frozen=True)
 class Index(Deref[A]):
     index: int
+    ref_type: type
+
+    @property
+    def value(self) -> A:
+        raise ValueError("Cannot get value of Index")
 
 
 def _index_flatten(
     x: Index[tp.Any],
-) -> tp.Tuple[tp.Tuple[()], int]:
-    return (), x.index
+) -> tp.Tuple[tp.Tuple[()], tp.Tuple[int, type]]:
+    return (), (x.index, x.ref_type)
 
 
-def _index_unflatten(aux_data: int, children: tp.Tuple[()]):
-    return Index(aux_data)
+def _index_unflatten(aux_data: tp.Tuple[int, type], children: tp.Tuple[()]):
+    return Index(*aux_data)
 
 
 jax.tree_util.register_pytree_node(Index, _index_flatten, _index_unflatten)
@@ -83,7 +99,7 @@ class Ref(tp.Generic[A]):
 
 def deref(pytree: A) -> A:
     if isinstance(pytree, Ref):
-        return Value(pytree.value, index=0, ref_type=type(pytree))
+        return Value(pytree.value, index=0, ref_type=type(pytree))  # type: ignore
 
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
 
@@ -93,7 +109,7 @@ def deref(pytree: A) -> A:
                 ref_index[ref] = len(ref_index)
                 return Value(ref.value, index=ref_index[ref], ref_type=type(ref))
             else:
-                return Index(ref_index[ref])
+                return Index(ref_index[ref], ref_type=type(ref))
         elif isinstance(ref, Deref) and ref_index:
             raise ValueError("Cannot 'deref' pytree with a mix of Refs and Derefs")
         return ref
