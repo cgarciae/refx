@@ -7,18 +7,33 @@ readme = "README.md"
 packages = [{ include = "refx" }, { include = "nnx" }]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.8,<3.12"
 simple-pytree = { path = "../simple-pytree", develop = true }
 
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"
+ipykernel = "^6.21.3"
 
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.2.2"
 pytest-cov = "^4.0.0"
 
+
+[tool.poetry.group.examples.dependencies]
+matplotlib = "^3.7.1"
+ciclo = { path = "../ciclo", develop = true }
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+# coverage
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "@overload",
+    "@tp.overload",
+    "@abstractmethod",
+]

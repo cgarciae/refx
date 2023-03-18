@@ -1,14 +1,14 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import jax
 import pytest
 
-from refx import Ref, deref, reref
+import refx
 
 
-class TestPytreeRef:
+class TestRef:
     def test_ref(self):
-        r1 = Ref(1)
+        r1 = refx.Ref(1)
         assert r1.value == 1
 
         def add_one(r):
@@ -27,7 +27,7 @@ class TestPytreeRef:
         assert r2.value == 3
 
     def test_ref_trace_level(self):
-        r1: Ref[int] = Ref(1)
+        r1: refx.Ref[int] = refx.Ref(1)
 
         @jax.jit
         def f():
@@ -40,16 +40,16 @@ class TestPytreeRef:
         f()
 
         @jax.jit
-        def g(r2: Ref[int], r3: Ref[int]):
-            r2, r3 = reref((r2, r3))
+        def g(r2: refx.Ref[int], r3: refx.Ref[int]):
+            r2, r3 = refx.reref((r2, r3))
             assert r2 is r3
 
             r2.value = 2
             assert r1 is not r2
             assert r3.value == 2
-            return deref(r2)
+            return refx.deref(r2)
 
-        r2 = reref(g(*deref((r1, r1))))
+        r2 = refx.reref(g(*refx.deref((r1, r1))))
 
         assert r1.value == 1
         assert r2.value == 2
@@ -58,28 +58,28 @@ class TestPytreeRef:
         assert r1.value == 1
         assert r2.value == 3
 
-        r3 = reref(g(*deref((r1, r1))))
+        r3 = refx.reref(g(*refx.deref((r1, r1))))
 
         assert r3 is not r2
         assert r3.value == 2
 
     def test_deref_through_jit(self):
-        r1 = Ref(1)
-        r2 = Ref(2)
+        r1 = refx.Ref(1)
+        r2 = refx.Ref(2)
 
         pytree = pytree0 = {"a": [r1, r2], "b": r1}
 
         @jax.jit
         def f(pytree):
-            pytree = reref(pytree)
+            pytree = refx.reref(pytree)
 
             assert pytree["a"][0] is pytree["b"]
             assert pytree["a"][1] is not pytree["b"]
 
-            return deref(pytree)
+            return refx.deref(pytree)
 
-        pytree = f(deref(pytree))
-        pytree = reref(pytree)
+        pytree = f(refx.deref(pytree))
+        pytree = refx.reref(pytree)
 
         assert pytree["a"][0] is pytree["b"]
         assert pytree["a"][1] is not pytree["b"]
@@ -90,13 +90,13 @@ class TestPytreeRef:
         assert pytree["b"] is not pytree0["b"]
 
     def test_barrier_edge_case(self):
-        r1: Optional[Ref[Any]] = None
+        r1: Optional[refx.Ref[Any]] = None
 
         @jax.jit
         def f():
             nonlocal r1
             x = jax.numpy.empty(1)
-            r1 = Ref(x)
+            r1 = refx.Ref(x)
             return x
 
         x = f()
@@ -121,21 +121,21 @@ class TestPytreeRef:
         x = g()
 
     def test_cross_barrier(self):
-        r1: Ref[int] = Ref(1)
+        r1: refx.Ref[int] = refx.Ref(1)
 
         @jax.jit
-        def g(r2: Ref[int]):
-            r2 = reref(r2)
+        def g(r2: refx.Ref[int]):
+            r2 = refx.reref(r2)
             r2.value += 1
             assert r1 is not r2
-            return deref(r2)
+            return refx.deref(r2)
 
-        r2 = reref(g(deref(r1)))
+        r2 = refx.reref(g(refx.deref(r1)))
         assert r1 is not r2
         assert r1.value == 1
         assert r2.value == 2
 
-        r3 = reref(g(deref(r2)))
+        r3 = refx.reref(g(refx.deref(r2)))
         assert r1 is not r2
         assert r2 is not r3
         assert r1.value == 1
@@ -155,37 +155,37 @@ class TestPytreeRef:
 
     def test_no_rejit(self):
         n = 0
-        r1 = Ref(1)
-        r2 = Ref(2)
+        r1 = refx.Ref(1)
+        r2 = refx.Ref(2)
 
         @jax.jit
-        def g(r3: Ref[int], r4: Ref[int], r5: Ref[int]):
-            r3, r4, r5 = reref((r3, r4, r5))
+        def g(r3: refx.Ref[int], r4: refx.Ref[int], r5: refx.Ref[int]):
+            r3, r4, r5 = refx.reref((r3, r4, r5))
             nonlocal n
             n += 1
             assert r3 is r4
             assert r4 is not r5
-            return deref(r3)
+            return refx.deref(r3)
 
-        r6 = reref(g(*deref((r1, r1, r2))))
+        r6 = refx.reref(g(*refx.deref((r1, r1, r2))))
         assert r6 is not r1
         assert r6.value == r1.value
         assert n == 1
 
-        g(*deref((r1, r1, r2)))
+        g(*refx.deref((r1, r1, r2)))
         assert n == 1
 
-        g(*deref((r2, r2, r1)))
+        g(*refx.deref((r2, r2, r1)))
         assert n == 1
 
         with pytest.raises(AssertionError):
-            g(*deref((r1, r2, r1)))
+            g(*refx.deref((r1, r2, r1)))
 
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = Ref(1)
-        r2 = Ref(2)
+        r1 = refx.Ref(1)
+        r2 = refx.Ref(2)
         v1 = 3
         pytree = {
             "a": [r1, r2, v1],
@@ -193,8 +193,41 @@ class TestPytreeRef:
         }
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
 
-        pytree = deref(pytree)
+        pytree = refx.deref(pytree)
         assert len(jax.tree_util.tree_leaves(pytree)) == 3
 
-        pytree = reref(pytree)
+        pytree = refx.reref(pytree)
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
+
+    def test_get_paritition_denpotent(self):
+        p1 = refx.Ref(10.0)
+        p2 = refx.Ref(20.0)
+
+        pytree: Dict[str, Any] = {
+            "a": [p1, p2],
+            "b": p1,
+            "c": 7,
+            "d": 5.0,
+        }
+
+        ref_partition = refx.get_partition(pytree, refx.Ref)
+        assert ref_partition[0] is p1
+        assert ref_partition[1] is p2
+        assert ref_partition[2] is p1
+        assert ref_partition[3] is refx.NOTHING
+        assert ref_partition[4] is refx.NOTHING
+        assert len(ref_partition) == 5
+
+        ref_partition = refx.get_partition(ref_partition, refx.Ref)
+        assert ref_partition[0] is p1
+        assert ref_partition[1] is p2
+        assert ref_partition[2] is p1
+        assert ref_partition[3] is refx.NOTHING
+        assert ref_partition[4] is refx.NOTHING
+        assert len(ref_partition) == 5
+
+    def test_accesing_value_from_index(self):
+        index = refx.Index(0, refx.Ref)
+
+        with pytest.raises(AttributeError, match="Cannot get value of Index"):
+            index.value

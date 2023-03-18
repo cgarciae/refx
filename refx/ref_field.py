@@ -18,7 +18,7 @@ class RefField(dataclasses.Field, tp.Generic[A]):
 
     @property
     def object_field_name(self):
-        return f"_ref__{self.class_field_name}"
+        return f"{self.class_field_name}__ref"
 
     def __get__(self, obj, objtype=None):
         if obj is None:

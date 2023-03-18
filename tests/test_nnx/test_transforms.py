@@ -74,7 +74,7 @@ class TestGrad:
         assert grad[3] is refx.NOTHING
         assert grad[4] is refx.NOTHING
 
-        refx.update_partition_from_derefed(pytree, grad, nnx.Param)
+        refx.update_partition(pytree, grad, nnx.Param)
         assert pytree["a"][0].value == 2.0
         assert pytree["a"][1].value == 1.0
         assert pytree["b"].value == 2.0
@@ -109,7 +109,7 @@ class TestGrad:
         assert grad[3] is refx.NOTHING
         assert grad[4] is refx.NOTHING
 
-        refx.update_partition_from_derefed(pytree, grad, nnx.Param)
+        refx.update_partition(pytree, grad, nnx.Param)
         assert pytree["a"][0].value == 2.0
         assert pytree["a"][1].value == 20.0
         assert pytree["b"].value == 2.0
@@ -143,7 +143,7 @@ class TestGrad:
         assert grad[3] is refx.NOTHING
         assert grad[4] is refx.NOTHING
 
-        refx.update_partition_from_derefed(pytree, grad, nnx.BatchStat)
+        refx.update_partition(pytree, grad, nnx.BatchStat)
         assert pytree["a"][0].value == 10.0
         assert pytree["a"][1].value == 1.0
         assert pytree["b"].value == 10.0

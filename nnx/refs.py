@@ -23,7 +23,7 @@ class Param(refx.Ref[A]):
 # ----------------------------------------
 
 
-def params(
+def param(
     default: tp.Any = dataclasses.MISSING,
     *,
     default_factory: tp.Any = dataclasses.MISSING,

@@ -50,6 +50,18 @@ class RefJIT(jax.stages.Wrapped):
         return self.jitted_fn.lower(*args, **kwargs)
 
 
+def _update_decorator_fields(
+    decorator: Callable[..., Any], wrapped: Callable[..., Any]
+):
+    """Update the fields of a decorator to match the wrapped function."""
+    if hasattr(wrapped, "__signature__"):
+        decorator.__signature__ = wrapped.__signature__
+        # decorator.__call__.__signature__ = wrapped.__signature__
+    if hasattr(wrapped, "__name__"):
+        decorator.__name__ = wrapped.__name__
+        # decorator.__call__.__name__ = wrapped.__name__
+
+
 def jit(
     fun: Callable[..., Any],
     in_shardings: Any = pxla._UNSPECIFIED,
@@ -77,7 +89,8 @@ def jit(
         inline=inline,
         abstracted_axes=abstracted_axes,
     )
-    functools.wraps(fun)(ref_jit)
+    ref_jit = functools.wraps(fun)(ref_jit)
+    # _update_decorator_fields(ref_jit, fun)
     return ref_jit
 
 
@@ -163,5 +176,6 @@ def grad(
         allow_int=allow_int,
         reduce_axes=reduce_axes,
     )
-    functools.wraps(fun)(ref_grad)
+    ref_grad = functools.wraps(fun)(ref_grad)
+    # _update_decorator_fields(ref_grad, fun)
     return ref_grad

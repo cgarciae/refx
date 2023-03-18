@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import dataclasses
 import typing as tp
 
@@ -16,7 +16,7 @@ Leaves = tp.List[Leaf]
 
 class Nothing:
     def __repr__(self) -> str:
-        return "Nothing"
+        return "Nothing"  # pragma: no cover
 
 
 def _nothing_flatten(x):
@@ -32,7 +32,7 @@ NOTHING = Nothing()
 jax.tree_util.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
-class Deref(tp.Generic[A]):
+class Deref(ABC, tp.Generic[A]):
     index: int
     ref_type: type
 
@@ -86,7 +86,7 @@ class Index(Deref[A]):
 
     @property
     def value(self) -> A:
-        raise ValueError("Cannot get value of Index")
+        raise AttributeError("Cannot get value of Index")
 
 
 def _index_flatten(
@@ -168,7 +168,7 @@ def reref(pytree: A) -> A:
 
 
 @tp.overload
-def update_partition_from_derefed(
+def update_partition(
     refed_leaves: Leaves,
     derefed_leaves: Leaves,
 ):
@@ -176,7 +176,7 @@ def update_partition_from_derefed(
 
 
 @tp.overload
-def update_partition_from_derefed(
+def update_partition(
     refed_leaves: tp.Any,
     derefed_leaves: Leaves,
     type_predicate: TypeOrSeqType,
@@ -184,7 +184,7 @@ def update_partition_from_derefed(
     ...
 
 
-def update_partition_from_derefed(
+def update_partition(
     refed_leaves: tp.Union[Leaves, tp.Any],
     derefed_leaves: Leaves,
     type_predicate: tp.Optional[TypeOrSeqType] = None,
@@ -260,7 +260,7 @@ def update_from(refed: A, derefed: A):
     )
     source_leaves = treedef.flatten_up_to(derefed)
 
-    update_partition_from_derefed(target_leaves, source_leaves)
+    update_partition(target_leaves, source_leaves)
 
 
 def _standar_type_partition(
@@ -280,7 +280,9 @@ def get_partition(pytree, type_predicate: TypeOrSeqType) -> Leaves:
 
 def partition_tree(pytree, *type_predicates: TypeOrSeqType):
     type_predicates = tuple(_standar_type_partition(p) for p in type_predicates)
-    leaves, treedef = jax.tree_util.tree_flatten(pytree)
+    leaves, treedef = jax.tree_util.tree_flatten(
+        pytree, is_leaf=lambda x: isinstance(x, Deref) or x is NOTHING
+    )
 
     # we have n + 1 partitions, where n is the number of predicates
     # the last partition is for values that don't match any predicate
@@ -301,14 +303,28 @@ def partition_tree(pytree, *type_predicates: TypeOrSeqType):
     return partitions, treedef
 
 
-def merge_partitions(partitions, treedef):
-    leaves = []
-    for i, options in enumerate(zip(*partitions)):
-        non_null = [option for option in options if option is not NOTHING]
-        if len(non_null) == 0:
-            raise ValueError(f"Expected at least one non-null value for position {i}")
-        elif len(non_null) > 1:
-            raise ValueError(f"Expected at most one non-null value for position {i}")
-        leaves.append(non_null[0])
+def _get_non_nothing(options: tp.Tuple[tp.Union[Leaf, Nothing], ...], position: int):
+    non_null = [option for option in options if option is not NOTHING]
+    if len(non_null) == 0:
+        raise ValueError(
+            f"Expected at least one non-null value for position {position}"
+        )
+    elif len(non_null) > 1:
+        raise ValueError(f"Expected at most one non-null value for position {position}")
+    return non_null[0]
+
+
+def merge_partitions(partitions: tp.Sequence[Leaves], treedef: jax.tree_util.PyTreeDef):
+    lenghts = [len(partition) for partition in partitions]
+
+    if not all(length == lenghts[0] for length in lenghts):
+        raise ValueError(
+            "All partitions must have the same length, got "
+            f"{', '.join(str(length) for length in lenghts)}"
+        )
+
+    leaves = [
+        _get_non_nothing(options, i) for i, options in enumerate(zip(*partitions))
+    ]
 
     return jax.tree_util.tree_unflatten(treedef, leaves)
