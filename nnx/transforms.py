@@ -1,12 +1,9 @@
-import dataclasses
 import functools
 from typing import (
     Any,
     Callable,
-    Generic,
     Hashable,
     Iterable,
-    List,
     Literal,
     Optional,
     Sequence,
@@ -26,24 +23,7 @@ from nnx.refs import Param
 A = TypeVar("A")
 F = TypeVar("F", bound=Callable[..., Any])
 AxisName = Hashable
-
-
-class Nothing:
-    def __repr__(self) -> str:
-        return "Nothing"
-
-
-def _nothing_flatten(x):
-    return (), None
-
-
-def _nothing_unflatten(aux_data, children):
-    return NOTHING
-
-
-NOTHING = Nothing()
-
-jax.tree_util.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
+TypeOrSeqType = Union[Type[refx.Ref[Any]], Sequence[Type[refx.Ref[Any]]]]
 
 
 class RefJIT(jax.stages.Wrapped):
@@ -101,52 +81,17 @@ def jit(
     return ref_jit
 
 
-def partition(pytree, *type_predicates: Tuple[Type[refx.Ref[Any]], ...]):
-    leaves, treedef = jax.tree_util.tree_flatten(pytree)
-
-    # we have n + 1 partitions, where n is the number of predicates
-    # the last partition is for values that don't match any predicate
-    partitions: Tuple[List[Any]] = tuple(
-        [NOTHING] * len(leaves) for _ in range(len(type_predicates) + 1)
-    )
-    for j, leaf in enumerate(leaves):
-        for i, predicate in enumerate(type_predicates):
-            if (isinstance(leaf, refx.Ref) and isinstance(leaf, predicate)) or (
-                isinstance(leaf, refx.Deref) and issubclass(leaf.ref_type, predicate)
-            ):
-                partitions[i][j] = leaf
-                break
-        else:
-            # if we didn't break, set leaf to last partition
-            partitions[-1][j] = leaf
-
-    return partitions, treedef
-
-
-def merge_partitions(partitions, treedef):
-    leaves = []
-    for i, options in enumerate(zip(*partitions)):
-        non_null = [option for option in options if option is not NOTHING]
-        if len(non_null) == 0:
-            raise ValueError(f"Expected at least one non-null value for position {i}")
-        elif len(non_null) > 1:
-            raise ValueError(f"Expected at most one non-null value for position {i}")
-        leaves.append(non_null[0])
-
-    return jax.tree_util.tree_unflatten(treedef, leaves)
-
-
 class RefGrad:
     def __init__(
         self,
         fun: Callable[..., Any],
-        type_predicate: Tuple[Type[refx.Ref[Any]], ...],
+        type_predicate: TypeOrSeqType,
         **grad_kwargs,
     ):
         @functools.partial(jax.grad, **grad_kwargs)
         def grad_fn(diff, non_diff, treedef, *args, **kwargs):
             diff, non_diff = refx.reref((diff, non_diff))
-            pytree = merge_partitions((diff, non_diff), treedef)
+            pytree = refx.merge_partitions((diff, non_diff), treedef)
             out = fun(pytree, *args, **kwargs)
             out = refx.deref(out)
             return out
@@ -156,7 +101,7 @@ class RefGrad:
         self.has_aux: bool = grad_kwargs["has_aux"]
 
     def __call__(self, pytree, *args, **kwargs):
-        (diff, non_diff), treedef = partition(pytree, self.type_predicate)
+        (diff, non_diff), treedef = refx.partition_tree(pytree, self.type_predicate)
         diff, non_diff = refx.deref((diff, non_diff))
         grads = self.grad_fn(diff, non_diff, treedef, *args, **kwargs)
 
@@ -169,13 +114,6 @@ class RefGrad:
 
     def __repr__(self):
         return f"RefGrad({self.grad_fn})"
-
-
-def is_param(x):
-    return isinstance(x, Param)
-
-
-TypeOrSeqType = Union[Type[refx.Ref[Any]], Sequence[Type[refx.Ref[Any]]]]
 
 
 @overload
@@ -216,13 +154,6 @@ def grad(
     allow_int: bool = False,
     reduce_axes: Sequence[AxisName] = (),
 ) -> Callable[..., Union[Tuple[Any, Any], Any]]:
-    # if its a type
-    if isinstance(type_predicate, type):
-        type_predicate = (type_predicate,)
-
-    if not isinstance(type_predicate, tuple):
-        type_predicate = tuple(type_predicate)
-
     ref_grad = RefGrad(
         fun,
         type_predicate,
