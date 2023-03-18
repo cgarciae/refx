@@ -44,7 +44,7 @@ class TestJIT:
         p1 = nnx.Param(1.0)
         p2 = nnx.Param(2.0)
 
-        pytree = pytree0 = {
+        pytree = {
             "a": [p1, p2],
             "b": p1,
             "c": 1,

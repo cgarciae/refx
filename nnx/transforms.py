@@ -27,22 +27,22 @@ F = TypeVar("F", bound=Callable[..., Any])
 AxisName = Hashable
 
 
-class Null:
+class Nothing:
     def __repr__(self) -> str:
-        return "Null"
+        return "Nothing"
 
 
-def _null_flatten(x):
+def _nothing_flatten(x):
     return (), None
 
 
-def _null_unflatten(aux_data, children):
-    return NULL
+def _nothing_unflatten(aux_data, children):
+    return NOTHING
 
 
-NULL = Null()
+NOTHING = Nothing()
 
-jax.tree_util.register_pytree_node(Null, _null_flatten, _null_unflatten)
+jax.tree_util.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
 class RefJIT(jax.stages.Wrapped):
@@ -107,7 +107,7 @@ def partition(pytree, *predicates: Callable[[Any], bool]):
     # we have n + 1 partitions, where n is the number of predicates
     # the last partition is for values that don't match any predicate
     partitions: Tuple[List[Any]] = tuple(
-        [NULL] * len(leaves) for _ in range(len(predicates) + 1)
+        [NOTHING] * len(leaves) for _ in range(len(predicates) + 1)
     )
     for j, leaf in enumerate(leaves):
         for i, predicate in enumerate(predicates):
@@ -124,7 +124,7 @@ def partition(pytree, *predicates: Callable[[Any], bool]):
 def merge_partitions(partitions, treedef):
     leaves = []
     for i, options in enumerate(zip(*partitions)):
-        non_null = [option for option in options if option is not NULL]
+        non_null = [option for option in options if option is not NOTHING]
         if len(non_null) == 0:
             raise ValueError(f"Expected at least one non-null value for position {i}")
         elif len(non_null) > 1:
