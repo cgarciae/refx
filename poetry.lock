@@ -478,7 +478,7 @@ test-extra = ["curio", "matplotlib (!=3.2.0)", "nbformat", "numpy (>=1.21)", "pa
 name = "jax"
 version = "0.4.6"
 description = "Differentiate, compile, and transform Numpy code."
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -504,7 +504,7 @@ tpu = ["jaxlib (==0.4.6)", "libtpu-nightly (==0.1.dev20230309)", "requests"]
 name = "jaxlib"
 version = "0.4.6"
 description = "XLA library for JAX"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -634,7 +634,7 @@ files = [
 name = "numpy"
 version = "1.24.2"
 description = "Fundamental package for array computing in Python"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -672,7 +672,7 @@ files = [
 name = "opt-einsum"
 version = "3.3.0"
 description = "Optimizing numpys einsum function"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.5"
 files = [
@@ -1058,7 +1058,7 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 name = "scipy"
 version = "1.10.1"
 description = "Fundamental algorithms for scientific computing in Python"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "<3.12,>=3.8"
 files = [
@@ -1097,7 +1097,7 @@ test = ["asv", "gmpy2", "mpmath", "pooch", "pytest", "pytest-cov", "pytest-timeo
 name = "simple-pytree"
 version = "0.1.6"
 description = ""
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.8,<3.12"
 files = [
@@ -1233,4 +1233,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "39edf6bd89521ca28b5acf4ee948ad8e1e84dfd87c34fde183e1910c1ce7b595"
+content-hash = "f71e9c1c60e1ad708e88b5b3fac7778c27d51d699a9f5c8cee3b9f79e4c97766"

@@ -5,10 +5,14 @@ from .ref import (
     Index,
     deref,
     reref,
-    update_from,
-    partition_tree,
-    update_partition,
-    merge_partitions,
     NOTHING,
-    get_partition,
 )
+from .partitioning import (
+    partition_tree,
+    merge_partitions,
+    get_partition,
+    update_partition,
+    update_from,
+)
+
+from .ref_field import ref_field, RefField
