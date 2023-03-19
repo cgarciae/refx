@@ -4,11 +4,11 @@ import typing as tp
 
 
 class Param(refx.Ref[tp.Any]):
-    ...
+    pass
 
 
 class BatchStat(refx.Ref[tp.Any]):
-    ...
+    pass
 
 
 class TestPartitioning:

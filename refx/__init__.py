@@ -1,18 +1,24 @@
-from .ref import (
-    Ref,
-    Deref,
-    Value,
-    Index,
-    deref,
-    reref,
-    NOTHING,
-)
 from .partitioning import (
-    partition_tree,
-    merge_partitions,
     get_partition,
-    update_partition,
+    merge_partitions,
+    partition_tree,
     update_from,
+    update_partition,
 )
-
-from .ref_field import ref_field, RefField
+from .ref import (
+    NOTHING,
+    Deref,
+    Index,
+    Ref,
+    Static,
+    Value,
+    Dag,
+    AnyRef,
+    deref,
+    deref_flatten,
+    deref_unflatten,
+    reref,
+    reref_flatten,
+    reref_unflatten,
+)
+from .ref_field import RefField, ref_field

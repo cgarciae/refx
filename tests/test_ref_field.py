@@ -1,4 +1,5 @@
 import dataclasses
+from functools import partial
 
 import jax
 import pytest
@@ -6,12 +7,14 @@ from simple_pytree import Pytree
 
 import refx
 
+any_field = partial(refx.ref_field, refx.AnyRef)
+
 
 class TestRefField:
     def test_ref_field_dataclass(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = refx.ref_field()
+            a: int = any_field()
 
         foo1 = Foo(a=1)
         foo1.a = 2
@@ -29,16 +32,16 @@ class TestRefField:
     def test_cannot_change_ref(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = refx.ref_field()
+            a: int = any_field()
 
         foo1 = Foo(a=1)
 
         with pytest.raises(ValueError, match="Cannot change Ref"):
-            foo1.a = refx.Ref(2)
+            foo1.a = refx.AnyRef(2)
 
     def test_ref_field_normal_class(self):
         class Foo(Pytree):
-            a: int = refx.ref_field(ref_type=refx.Ref)
+            a: int = any_field()
 
             def __init__(self, a: int):
                 pass
@@ -58,7 +61,7 @@ class TestRefField:
 
     def test_unset_field(self):
         class Foo(Pytree):
-            a = refx.ref_field(ref_type=refx.Ref[int])
+            a = any_field()
 
         foo1 = Foo()
 
@@ -68,7 +71,7 @@ class TestRefField:
     def test_barrier(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = refx.ref_field(ref_type=refx.Ref[int])
+            a: int = any_field()
 
         foo1 = Foo(a=1)
 

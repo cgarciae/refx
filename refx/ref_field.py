@@ -45,9 +45,10 @@ class RefField(dataclasses.Field, tp.Generic[A]):
 
 
 def ref_field(
+    ref_type: tp.Type[Ref[tp.Any]],
     default: tp.Any = dataclasses.MISSING,
     *,
-    ref_type: tp.Type[Ref[tp.Any]] = Ref,
+    metadata_node_key: str = "pytree_node",
     default_factory: tp.Any = dataclasses.MISSING,
     init: bool = True,
     repr: bool = True,
@@ -60,10 +61,10 @@ def ref_field(
     else:
         metadata = dict(metadata)
 
-    if "pytree_node" in metadata:
-        raise ValueError("'pytree_node' found in metadata")
+    if metadata_node_key in metadata:
+        raise ValueError(f"'{metadata_node_key}' found in metadata")
 
-    metadata["pytree_node"] = True
+    metadata[metadata_node_key] = True
 
     return RefField(
         ref_type=ref_type,
