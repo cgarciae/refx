@@ -1,9 +1,9 @@
-from abc import ABC, abstractmethod
-import dataclasses
 from functools import partial
 import typing as tp
+import typing_extensions as tpe
 
 import jax
+import jax.tree_util as jtu
 
 from refx import tracers
 
@@ -30,15 +30,21 @@ def _nothing_unflatten(aux_data, children):
 
 NOTHING = Nothing()
 
-jax.tree_util.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
+jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
+@tpe.final
 class Ref(tp.Generic[A]):
-    __slots__ = ("_value", "_trace")
+    __slots__ = ("_collection", "_value", "_trace")
 
-    def __init__(self, value: A):
+    def __init__(self, collection: str, value: A):
+        self._collection = collection
         self._value = value
         self._trace = tracers.current_trace()
+
+    @property
+    def collection(self) -> str:
+        return self._collection
 
     @property
     def value(self) -> A:
@@ -52,36 +58,32 @@ class Ref(tp.Generic[A]):
             raise ValueError("Cannot mutate ref from different trace level")
         self._value = value
 
-    def __new__(cls, value: A):
-        if cls is Ref:
-            raise TypeError(
-                "Cannot instantiate Ref directly, create a subclass instead"
-            )
-        return super().__new__(cls)
+
+class DerefMeta(type):
+    def __subclasscheck__(self, __subclass: type) -> bool:
+        return issubclass(__subclass, (Value, Index))
+
+    def __instancecheck__(self, __instance: object) -> bool:
+        return isinstance(__instance, (Value, Index))
 
 
-class AnyRef(Ref[A]):
-    pass
+class Deref(metaclass=DerefMeta):
+    @property
+    def collection(self) -> str:
+        ...
 
-
-@tp.runtime_checkable
-class Deref(tp.Protocol, tp.Generic[A]):
     @property
     def index(self) -> int:
         ...
 
-    @property
-    def ref_type(self) -> tp.Type[Ref[A]]:
-        ...
-
 
 class Value(tp.Generic[A]):
-    __slots__ = ("_value", "_index", "_ref_type")
+    __slots__ = ("_collection", "_value", "_index")
 
-    def __init__(self, value: A, index: int, ref_type: type):
+    def __init__(self, collection: str, value: A, index: int):
+        self._collection = collection
         self._value = value
         self._index = index
-        self._ref_type = ref_type
 
     @property
     def value(self) -> A:
@@ -92,63 +94,55 @@ class Value(tp.Generic[A]):
         return self._index
 
     @property
-    def ref_type(self) -> tp.Type[Ref[A]]:
-        return self._ref_type
-
-
-def _value_index_flatten(
-    x: Value[A],
-) -> tp.Tuple[tp.Tuple[A], tp.Tuple[int, type]]:
-    return (x.value,), (x.index, x.ref_type)
+    def collection(self) -> str:
+        return self._collection
 
 
 def _value_index_flatten_with_keys(
     x: Value[A],
-) -> tp.Tuple[tp.Tuple[tp.Tuple[tp.Any, A]], tp.Tuple[int, type]]:
-    return ((jax.tree_util.GetAttrKey("value"), x.value),), (x.index, x.ref_type)
+) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, A]], tp.Tuple[str, int]]:
+    return ((jtu.GetAttrKey("value"), x.value),), (x.collection, x.index)
 
 
-def _value_index_unflatten(aux_data: tp.Tuple[int, type], children: tp.Tuple[tp.Any]):
-    return Value(children[0], *aux_data)
+def _value_index_unflatten(
+    aux_data: tp.Tuple[str, int], children: tp.Tuple[A]
+) -> Value[A]:
+    collection, index = aux_data
+    return Value(collection, children[0], index)
 
 
-if hasattr(jax.tree_util, "register_pytree_with_keys"):
-    jax.tree_util.register_pytree_with_keys(
-        Value, _value_index_flatten_with_keys, _value_index_unflatten
-    )
-else:
-    jax.tree_util.register_pytree_node(
-        Value, _value_index_flatten, _value_index_unflatten
-    )
+jtu.register_pytree_with_keys(
+    Value, _value_index_flatten_with_keys, _value_index_unflatten
+)
 
 
 class Index(tp.Generic[A]):
-    __slots__ = ("_index", "_ref_type")
+    __slots__ = ("_collection", "_index")
 
-    def __init__(self, index: int, ref_type: type):
+    def __init__(self, collection: str, index: int):
+        self._collection = collection
         self._index = index
-        self._ref_type = ref_type
 
     @property
     def index(self) -> int:
         return self._index
 
     @property
-    def ref_type(self) -> tp.Type[Ref[A]]:
-        return self._ref_type
+    def collection(self) -> str:
+        return self._collection
 
 
 def _index_flatten(
     x: Index[tp.Any],
-) -> tp.Tuple[tp.Tuple[()], tp.Tuple[int, type]]:
-    return (), (x.index, x.ref_type)
+) -> tp.Tuple[tp.Tuple[()], tp.Tuple[str, int]]:
+    return (), (x.collection, x.index)
 
 
-def _index_unflatten(aux_data: tp.Tuple[int, type], children: tp.Tuple[()]):
+def _index_unflatten(aux_data: tp.Tuple[str, int], children: tp.Tuple[()]):
     return Index(*aux_data)
 
 
-jax.tree_util.register_pytree_node(Index, _index_flatten, _index_unflatten)
+jtu.register_pytree_node(Index, _index_flatten, _index_unflatten)
 
 
 class Static(tp.Generic[A]):
@@ -170,7 +164,7 @@ def _static_unflatten(aux_data: A, _: tp.Tuple[()]) -> Static[A]:
     return Static(aux_data)
 
 
-jax.tree_util.register_pytree_node(Static, _static_flatten, _static_unflatten)
+jtu.register_pytree_node(Static, _static_flatten, _static_unflatten)
 
 
 class Dag(tp.Generic[A]):
@@ -184,42 +178,45 @@ class Dag(tp.Generic[A]):
         return self._value
 
 
-def _dag_flatten(x: Dag[tp.Any]) -> tp.Tuple[Leaves, jax.tree_util.PyTreeDef]:
-    return deref_flatten(x.value)
+def _dag_flatten_with_keys(
+    x: Dag[tp.Any],
+) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, Leaves]], jtu.PyTreeDef]:
+    leaves, treedef = deref_flatten(x.value)
+    key_node = (jtu.GetAttrKey("value"), leaves)
+    return (key_node,), treedef
 
 
-def _dag_unflatten(treedef: jax.tree_util.PyTreeDef, leaves: Leaves) -> Dag[tp.Any]:
+def _dag_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> Dag[tp.Any]:
     return Dag(reref_unflatten(treedef, leaves))
 
 
-jax.tree_util.register_pytree_node(Dag, _dag_flatten, _dag_unflatten)
+jtu.register_pytree_with_keys(Dag, _dag_flatten_with_keys, _dag_unflatten)
 
 
 def deref_fn(ref_index: tp.Dict[Ref[tp.Any], int], x: tp.Any) -> tp.Any:
     if isinstance(x, Ref):
         if x not in ref_index:
-            ref_index[x] = len(ref_index)
-            return Value(x.value, index=ref_index[x], ref_type=type(x))
+            index = len(ref_index)
+            ref_index[x] = index
+            return Value(x.collection, x.value, index=index)
         else:
-            return Index(ref_index[x], ref_type=type(x))
+            return Index(x.collection, index=ref_index[x])
     elif isinstance(x, Deref) and ref_index:
         raise ValueError("Cannot 'deref' pytree with a mix of Refs and Derefs")
     else:
         return x
 
 
-def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jax.tree_util.PyTreeDef]:
+def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    leaves, treedef = jax.tree_util.tree_flatten(
-        pytree, is_leaf=lambda x: isinstance(x, Deref)
-    )
+    leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
     return list(map(partial(deref_fn, ref_index), leaves)), treedef
 
 
-def deref_unflatten(treedef: jax.tree_util.PyTreeDef, leaves: Leaves) -> A:
+def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> A:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
     leaves = list(map(partial(deref_fn, ref_index), leaves))
-    return jax.tree_util.tree_unflatten(treedef, leaves)
+    return jtu.tree_unflatten(treedef, leaves)
 
 
 def deref(pytree: A) -> A:
@@ -235,7 +232,7 @@ def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any]], x: tp.Any) -> tp.Any:
     elif isinstance(x, Value):
         if x.index in index_ref:
             raise ValueError("Value already exists")
-        ref = x.ref_type(x.value)
+        ref = Ref(x.collection, x.value)
         index_ref[x.index] = ref
         return ref
     elif isinstance(x, Index):
@@ -251,18 +248,16 @@ def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any]], x: tp.Any) -> tp.Any:
         return x
 
 
-def reref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jax.tree_util.PyTreeDef]:
+def reref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
     index_ref: tp.Dict[int, Ref[tp.Any]] = {}
-    leaves, treedef = jax.tree_util.tree_flatten(
-        pytree, is_leaf=lambda x: isinstance(x, Deref)
-    )
+    leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
     return list(map(partial(reref_fn, index_ref), leaves)), treedef
 
 
-def reref_unflatten(treedef: jax.tree_util.PyTreeDef, leaves: Leaves) -> tp.Any:
+def reref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Any:
     index_ref: tp.Dict[int, Ref[tp.Any]] = {}
     leaves = list(map(partial(reref_fn, index_ref), leaves))
-    return jax.tree_util.tree_unflatten(treedef, leaves)
+    return jtu.tree_unflatten(treedef, leaves)
 
 
 def reref(pytree: A) -> A:

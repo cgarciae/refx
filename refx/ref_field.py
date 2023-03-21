@@ -7,9 +7,9 @@ A = tp.TypeVar("A")
 
 
 class RefField(dataclasses.Field, tp.Generic[A]):
-    def __init__(self, ref_type: tp.Type[Ref[A]], **kwargs):
+    def __init__(self, collection: str, **kwargs):
         super().__init__(**kwargs)
-        self._ref_type = ref_type
+        self.collection = collection
         self._first_get_call = True
         self.class_field_name: tp.Optional[str] = None
 
@@ -41,11 +41,11 @@ class RefField(dataclasses.Field, tp.Generic[A]):
             ref: Ref[A] = getattr(obj, self.object_field_name)
             ref.value = value
         else:
-            obj.__dict__[self.object_field_name] = self._ref_type(value)
+            obj.__dict__[self.object_field_name] = Ref(self.collection, value)
 
 
 def ref_field(
-    ref_type: tp.Type[Ref[tp.Any]],
+    collection: str,
     default: tp.Any = dataclasses.MISSING,
     *,
     metadata_node_key: str = "pytree_node",
@@ -67,7 +67,7 @@ def ref_field(
     metadata[metadata_node_key] = True
 
     return RefField(
-        ref_type=ref_type,
+        collection=collection,
         default=default,
         default_factory=default_factory,
         init=init,

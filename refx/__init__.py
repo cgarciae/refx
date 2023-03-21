@@ -13,7 +13,6 @@ from .ref import (
     Static,
     Value,
     Dag,
-    AnyRef,
     deref,
     deref_flatten,
     deref_unflatten,

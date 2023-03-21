@@ -478,7 +478,7 @@ test-extra = ["curio", "matplotlib (!=3.2.0)", "nbformat", "numpy (>=1.21)", "pa
 name = "jax"
 version = "0.4.6"
 description = "Differentiate, compile, and transform Numpy code."
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -634,7 +634,7 @@ files = [
 name = "numpy"
 version = "1.24.2"
 description = "Fundamental package for array computing in Python"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -672,7 +672,7 @@ files = [
 name = "opt-einsum"
 version = "3.3.0"
 description = "Optimizing numpys einsum function"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.5"
 files = [
@@ -1058,7 +1058,7 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 name = "scipy"
 version = "1.10.1"
 description = "Fundamental algorithms for scientific computing in Python"
-category = "dev"
+category = "main"
 optional = false
 python-versions = "<3.12,>=3.8"
 files = [
@@ -1233,4 +1233,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "f71e9c1c60e1ad708e88b5b3fac7778c27d51d699a9f5c8cee3b9f79e4c97766"
+content-hash = "5419fa888fc79d44caa84acd44b7a779a22baff60ee4d832899353dc9ace8cdf"
