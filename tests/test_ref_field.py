@@ -1,5 +1,5 @@
 import dataclasses
-from functools import partial
+import typing as tp
 
 import jax
 import pytest
@@ -7,14 +7,19 @@ from simple_pytree import Pytree
 
 import refx
 
-param_field = partial(refx.ref_field, "params")
+
+def ref_field(
+    default: tp.Any = dataclasses.MISSING, *, key: tp.Hashable = None, **kwargs
+) -> tp.Any:
+    metadata = {"pytree_node": True}
+    return refx.RefField(key=key, default=default, **kwargs, metadata=metadata)
 
 
 class TestRefField:
     def test_ref_field_dataclass(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = param_field()
+            a: int = ref_field()
 
         foo1 = Foo(a=1)
         foo1.a = 2
@@ -32,16 +37,16 @@ class TestRefField:
     def test_cannot_change_ref(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = param_field()
+            a: int = ref_field()
 
         foo1 = Foo(a=1)
 
         with pytest.raises(ValueError, match="Cannot change Ref"):
-            foo1.a = refx.Ref("params", 2)
+            foo1.a = refx.Ref(2)
 
     def test_ref_field_normal_class(self):
         class Foo(Pytree):
-            a: int = param_field()
+            a: int = ref_field()
 
             def __init__(self, a: int):
                 pass
@@ -61,7 +66,7 @@ class TestRefField:
 
     def test_unset_field(self):
         class Foo(Pytree):
-            a = param_field()
+            a = ref_field()
 
         foo1 = Foo()
 
@@ -71,7 +76,7 @@ class TestRefField:
     def test_barrier(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = param_field()
+            a: int = ref_field()
 
         foo1 = Foo(a=1)
 

@@ -4,12 +4,28 @@ from refx.ref import Ref
 
 
 A = tp.TypeVar("A")
+K = tp.TypeVar("K", bound=tp.Hashable)
+
+dataclasses.field
 
 
-class RefField(dataclasses.Field, tp.Generic[A]):
-    def __init__(self, collection: str, **kwargs):
-        super().__init__(**kwargs)
-        self.collection = collection
+class RefField(dataclasses.Field, tp.Generic[A, K]):
+    def __init__(
+        self,
+        *,
+        key: K,
+        default: tp.Any = dataclasses.MISSING,
+        default_factory: tp.Any = dataclasses.MISSING,
+        init: bool = True,
+        repr: bool = True,
+        hash: tp.Optional[bool] = None,
+        compare: bool = True,
+        metadata: tp.Optional[tp.Mapping[tp.Any, tp.Any]] = None,
+    ):
+        if metadata is None:
+            metadata = {}
+        super().__init__(default, default_factory, init, repr, hash, compare, metadata)
+        self.key = key
         self._first_get_call = True
         self.class_field_name: tp.Optional[str] = None
 
@@ -34,45 +50,11 @@ class RefField(dataclasses.Field, tp.Generic[A]):
 
         return getattr(obj, self.object_field_name).value
 
-    def __set__(self, obj, value):
+    def __set__(self, obj, value: A):
         if isinstance(value, Ref):
             raise ValueError("Cannot change Ref")
         elif hasattr(obj, self.object_field_name):
-            ref: Ref[A] = getattr(obj, self.object_field_name)
+            ref: Ref[A, K] = getattr(obj, self.object_field_name)
             ref.value = value
         else:
-            obj.__dict__[self.object_field_name] = Ref(self.collection, value)
-
-
-def ref_field(
-    collection: str,
-    default: tp.Any = dataclasses.MISSING,
-    *,
-    metadata_node_key: str = "pytree_node",
-    default_factory: tp.Any = dataclasses.MISSING,
-    init: bool = True,
-    repr: bool = True,
-    hash: tp.Optional[bool] = None,
-    compare: bool = True,
-    metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
-) -> tp.Any:
-    if metadata is None:
-        metadata = {}
-    else:
-        metadata = dict(metadata)
-
-    if metadata_node_key in metadata:
-        raise ValueError(f"'{metadata_node_key}' found in metadata")
-
-    metadata[metadata_node_key] = True
-
-    return RefField(
-        collection=collection,
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+            obj.__dict__[self.object_field_name] = Ref(value, key=self.key)

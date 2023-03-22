@@ -1,10 +1,3 @@
-from .partitioning import (
-    get_partition,
-    merge_partitions,
-    partition_tree,
-    update_from,
-    update_partition,
-)
 from .ref import (
     NOTHING,
     Deref,
@@ -19,5 +12,6 @@ from .ref import (
     reref,
     reref_flatten,
     reref_unflatten,
+    update_from,
 )
-from .ref_field import RefField, ref_field
+from .ref_field import RefField
