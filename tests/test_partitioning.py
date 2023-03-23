@@ -3,10 +3,12 @@ import refx
 import typing as tp
 
 
+def any_ref(x):
+    return isinstance(x, refx.Ref)
+
+
 def has_collection(collection):
-    return (
-        lambda x: isinstance(x, (refx.Ref, refx.Deref)) and x.collection == collection
-    )
+    return lambda x: isinstance(x, refx.Referential) and x.collection == collection
 
 
 class TestPartitioning:
@@ -33,13 +35,9 @@ class TestPartitioning:
         assert params[("c",)] is refx.NOTHING
 
         # check rest
-        # assert rest[0] is refx.NOTHING
         assert rest[("a", "0")] is refx.NOTHING
-        # assert rest[1] is s1
         assert rest[("a", "1")] is s1
-        # assert rest[2] is refx.NOTHING
         assert rest[("b",)] is refx.NOTHING
-        # assert rest[3] == 100
         assert rest[("c",)] == 100
 
         pytree = refx.merge_partitions((params, rest), treedef)
@@ -80,7 +78,7 @@ class TestPartitioning:
             "c": 100,
         }
 
-        params = refx.get_partition(pytree, has_collection("params"))
+        params = refx.get_partition(has_collection("params"), pytree)
 
         def loss(params):
             params = refx.reref(params)
@@ -105,28 +103,18 @@ class TestPartitioning:
             "d": 5.0,
         }
 
-        ref_partition = refx.get_partition(pytree, "params")
-        # assert ref_partition["['a'][0]"] is p1
+        ref_partition = refx.get_partition(any_ref, pytree)
         assert ref_partition[("a", "0")] is p1
-        # assert ref_partition["['a'][1]"] is p2
         assert ref_partition[("a", "1")] is p2
-        # assert ref_partition["['b']"] is p1
         assert ref_partition[("b",)] is p1
-        # assert ref_partition["['c']"] is refx.NOTHING
         assert ref_partition[("c",)] is refx.NOTHING
-        # assert ref_partition["['d']"] is refx.NOTHING
         assert ref_partition[("d",)] is refx.NOTHING
         assert len(ref_partition) == 5
 
-        ref_partition = refx.get_partition(ref_partition, "params")
-        # assert ref_partition["['a'][0]"] is p1
+        ref_partition = refx.get_partition(any_ref, ref_partition)
         assert ref_partition[("a", "0")] is p1
-        # assert ref_partition["['a'][1]"] is p2
         assert ref_partition[("a", "1")] is p2
-        # assert ref_partition["['b']"] is p1
         assert ref_partition[("b",)] is p1
-        # assert ref_partition["['c']"] is refx.NOTHING
         assert ref_partition[("c",)] is refx.NOTHING
-        # assert ref_partition["['d']"] is refx.NOTHING
         assert ref_partition[("d",)] is refx.NOTHING
         assert len(ref_partition) == 5

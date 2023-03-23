@@ -91,7 +91,7 @@ def partition_tree(
     return partitions, treedef
 
 
-def get_partition(pytree, predicate: Predicate) -> Partition:
+def get_partition(predicate: Predicate, pytree) -> Partition:
     (partition, _rest), _treedef = partition_tree(pytree, predicate)
     return partition
 
