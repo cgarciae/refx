@@ -1,11 +1,13 @@
+from .partitioning import get_partition, merge_partitions, partition_tree
 from .ref import (
     NOTHING,
+    Dag,
     Deref,
     Index,
     Ref,
+    Referential,
     Static,
     Value,
-    Dag,
     deref,
     deref_flatten,
     deref_unflatten,

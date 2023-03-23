@@ -12,7 +12,7 @@ def ref_field(
     default: tp.Any = dataclasses.MISSING, *, key: tp.Hashable = None, **kwargs
 ) -> tp.Any:
     metadata = {"pytree_node": True}
-    return refx.RefField(key=key, default=default, **kwargs, metadata=metadata)
+    return refx.RefField(collection=key, default=default, **kwargs, metadata=metadata)
 
 
 class TestRefField:

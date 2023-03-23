@@ -35,30 +35,22 @@ NOTHING = Nothing()
 jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
-@tpe.final
-class Ref(tp.Generic[A, K]):
-    __slots__ = ("_value", "_key", "_trace")
+class ReferentialfMeta(type):
+    def __subclasscheck__(self, __subclass: type) -> bool:
+        return issubclass(__subclass, (Ref, Value, Index))
 
-    def __init__(self, value: A, key: K = None):
-        self._value = value
-        self._key = key
-        self._trace = tracers.current_trace()
+    def __instancecheck__(self, __instance: object) -> bool:
+        return isinstance(__instance, (Ref, Value, Index))
+
+
+class Referential(tp.Generic[K], metaclass=ReferentialfMeta):
+    @property
+    def index(self) -> int:
+        ...
 
     @property
-    def key(self) -> K:
-        return self._key
-
-    @property
-    def value(self) -> A:
-        if self._trace is not tracers.current_trace():
-            raise ValueError("Cannot access ref from different trace level")
-        return self._value
-
-    @value.setter
-    def value(self, value: A):
-        if self._trace is not tracers.current_trace():
-            raise ValueError("Cannot mutate ref from different trace level")
-        self._value = value
+    def collection(self) -> K:
+        ...
 
 
 class DerefMeta(type):
@@ -75,17 +67,44 @@ class Deref(tp.Generic[K], metaclass=DerefMeta):
         ...
 
     @property
-    def key(self) -> K:
+    def collection(self) -> K:
         ...
 
 
-class Value(tp.Generic[A, K]):
-    __slots__ = ("_value", "_index", "_key")
+@tpe.final
+class Ref(tp.Generic[A]):
+    __slots__ = ("_value", "_collection", "_trace")
 
-    def __init__(self, value: A, index: int, key: K):
+    def __init__(self, value: A, collection: tp.Hashable = None):
+        self._value = value
+        self._collection = collection
+        self._trace = tracers.current_trace()
+
+    @property
+    def collection(self) -> tp.Hashable:
+        return self._collection
+
+    @property
+    def value(self) -> A:
+        if self._trace is not tracers.current_trace():
+            raise ValueError("Cannot access ref from different trace level")
+        return self._value
+
+    @value.setter
+    def value(self, value: A):
+        if self._trace is not tracers.current_trace():
+            raise ValueError("Cannot mutate ref from different trace level")
+        self._value = value
+
+
+@tpe.final
+class Value(tp.Generic[A]):
+    __slots__ = ("_value", "_index", "_collection")
+
+    def __init__(self, value: A, index: int, collection: tp.Hashable):
         self._value = value
         self._index = index
-        self._key = key
+        self._collection = collection
 
     @property
     def value(self) -> A:
@@ -96,19 +115,19 @@ class Value(tp.Generic[A, K]):
         return self._index
 
     @property
-    def key(self) -> K:
-        return self._key
+    def collection(self) -> tp.Hashable:
+        return self._collection
 
 
 def _value_index_flatten_with_keys(
-    x: Value[A, K],
-) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, A]], tp.Tuple[int, K]]:
-    return ((jtu.GetAttrKey("value"), x.value),), (x.index, x.key)
+    x: Value[A],
+) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, A]], tp.Tuple[int, tp.Hashable]]:
+    return ((jtu.GetAttrKey("value"), x.value),), (x.index, x.collection)
 
 
 def _value_index_unflatten(
-    aux_data: tp.Tuple[int, K], children: tp.Tuple[A]
-) -> Value[A, K]:
+    aux_data: tp.Tuple[int, tp.Hashable], children: tp.Tuple[A]
+) -> Value[A]:
     return Value(children[0], *aux_data)
 
 
@@ -117,29 +136,30 @@ jtu.register_pytree_with_keys(
 )
 
 
-class Index(tp.Generic[K]):
-    __slots__ = ("_index", "_key")
+@tpe.final
+class Index:
+    __slots__ = ("_index", "_collection")
 
-    def __init__(self, index: int, key: K):
+    def __init__(self, index: int, collection: tp.Hashable):
         self._index = index
-        self._key = key
+        self._collection = collection
 
     @property
     def index(self) -> int:
         return self._index
 
     @property
-    def key(self) -> K:
-        return self._key
+    def collection(self) -> tp.Hashable:
+        return self._collection
 
 
-def _index_flatten(
-    x: Index[K],
-) -> tp.Tuple[tp.Tuple[()], tp.Tuple[int, K]]:
-    return (), (x.index, x.key)
+def _index_flatten(x: Index) -> tp.Tuple[tp.Tuple[()], tp.Tuple[int, tp.Hashable]]:
+    return (), (x.index, x.collection)
 
 
-def _index_unflatten(aux_data: tp.Tuple[int, K], children: tp.Tuple[()]) -> Index[K]:
+def _index_unflatten(
+    aux_data: tp.Tuple[int, tp.Hashable], children: tp.Tuple[()]
+) -> Index:
     return Index(*aux_data)
 
 
@@ -194,14 +214,14 @@ def _dag_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> Dag[tp.Any]:
 jtu.register_pytree_with_keys(Dag, _dag_flatten_with_keys, _dag_unflatten)
 
 
-def deref_fn(ref_index: tp.Dict[Ref[tp.Any, tp.Hashable], int], x: tp.Any) -> tp.Any:
+def deref_fn(ref_index: tp.Dict[Ref[tp.Any], int], x: tp.Any) -> tp.Any:
     if isinstance(x, Ref):
         if x not in ref_index:
             index = len(ref_index)
             ref_index[x] = index
-            return Value(x.value, index, key=x.key)
+            return Value(x.value, index, collection=x.collection)
         else:
-            return Index(index=ref_index[x], key=x.key)
+            return Index(ref_index[x], x.collection)
     elif isinstance(x, Deref) and ref_index:
         raise ValueError("Cannot 'deref' pytree with a mix of Refs and Derefs")
     else:
@@ -209,31 +229,31 @@ def deref_fn(ref_index: tp.Dict[Ref[tp.Any, tp.Hashable], int], x: tp.Any) -> tp
 
 
 def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
-    ref_index: tp.Dict[Ref[tp.Any, tp.Hashable], int] = {}
+    ref_index: tp.Dict[Ref[tp.Any], int] = {}
     leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
     return list(map(partial(deref_fn, ref_index), leaves)), treedef
 
 
 def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> A:
-    ref_index: tp.Dict[Ref[tp.Any, tp.Hashable], int] = {}
+    ref_index: tp.Dict[Ref[tp.Any], int] = {}
     leaves = list(map(partial(deref_fn, ref_index), leaves))
     return jtu.tree_unflatten(treedef, leaves)
 
 
 def deref(pytree: A) -> A:
-    ref_index: tp.Dict[Ref[tp.Any, tp.Hashable], int] = {}
+    ref_index: tp.Dict[Ref[tp.Any], int] = {}
     return jax.tree_map(
         partial(deref_fn, ref_index), pytree, is_leaf=lambda x: isinstance(x, Deref)
     )
 
 
-def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any, tp.Hashable]], x: tp.Any) -> tp.Any:
+def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any]], x: tp.Any) -> tp.Any:
     if isinstance(x, Ref):
         raise ValueError("Cannot 'reref' pytree with a mix of Refs and Derefs")
     elif isinstance(x, Value):
         if x.index in index_ref:
             raise ValueError("Value already exists")
-        ref = Ref(x.value, x.key)
+        ref = Ref(x.value, x.collection)
         index_ref[x.index] = ref
         return ref
     elif isinstance(x, Index):
@@ -250,27 +270,31 @@ def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any, tp.Hashable]], x: tp.Any) -> tp
 
 
 def reref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
-    index_ref: tp.Dict[int, Ref[tp.Any, tp.Hashable]] = {}
+    index_ref: tp.Dict[int, Ref[tp.Any]] = {}
     leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
     return list(map(partial(reref_fn, index_ref), leaves)), treedef
 
 
 def reref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Any:
-    index_ref: tp.Dict[int, Ref[tp.Any, tp.Hashable]] = {}
+    index_ref: tp.Dict[int, Ref[tp.Any]] = {}
     leaves = list(map(partial(reref_fn, index_ref), leaves))
     return jtu.tree_unflatten(treedef, leaves)
 
 
 def reref(pytree: A) -> A:
-    index_ref: tp.Dict[int, Ref[tp.Any, tp.Hashable]] = {}
+    index_ref: tp.Dict[int, Ref[tp.Any]] = {}
     return jax.tree_map(
         partial(reref_fn, index_ref), pytree, is_leaf=lambda x: isinstance(x, Deref)
     )
 
 
 def update_from(target_tree: tp.Any, source_tree: tp.Any):
-    target_leaves = jtu.tree_leaves(target_tree)
-    source_leaves = jtu.tree_leaves(source_tree)
+    target_leaves = jtu.tree_leaves(
+        target_tree, is_leaf=lambda x: isinstance(x, Referential)
+    )
+    source_leaves = jtu.tree_leaves(
+        source_tree, is_leaf=lambda x: isinstance(x, Referential)
+    )
 
     if len(target_leaves) != len(source_leaves):
         raise ValueError(
@@ -278,7 +302,7 @@ def update_from(target_tree: tp.Any, source_tree: tp.Any):
             f"{len(target_leaves)} and {len(source_leaves)}"
         )
 
-    seen_refs: tp.Set[Ref[tp.Any, tp.Hashable]] = set()
+    seen_refs: tp.Set[Ref[tp.Any]] = set()
     seen_indexes: tp.Set[int] = set()
     source_has_ref = False
     source_has_deref = False
@@ -323,13 +347,13 @@ def update_from(target_tree: tp.Any, source_tree: tp.Any):
                 f"Target partition should not contain Deref instances, got "
                 f"'{type(target_leaf).__name__}' at position [{i}]"
             )
-        elif target_leaf is not NOTHING:
-            raise ValueError(
-                f"Expected NOTHING target at position [{i}], "
-                f"got '{type(target_leaf).__name__}'"
-            )
-        elif source_leaf is not NOTHING:
-            raise ValueError(
-                f"Expected NOTHING source at position [{i}], "
-                f"got '{type(source_leaf).__name__}'"
-            )
+        # elif target_leaf is not NOTHING:
+        #     raise ValueError(
+        #         f"Expected NOTHING target at position [{i}], "
+        #         f"got '{type(target_leaf).__name__}'"
+        #     )
+        # elif source_leaf is not NOTHING:
+        #     raise ValueError(
+        #         f"Expected NOTHING source at position [{i}], "
+        #         f"got '{type(source_leaf).__name__}'"
+        #     )

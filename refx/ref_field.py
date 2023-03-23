@@ -6,14 +6,12 @@ from refx.ref import Ref
 A = tp.TypeVar("A")
 K = tp.TypeVar("K", bound=tp.Hashable)
 
-dataclasses.field
 
-
-class RefField(dataclasses.Field, tp.Generic[A, K]):
+class RefField(dataclasses.Field, tp.Generic[A]):
     def __init__(
         self,
         *,
-        key: K,
+        collection: tp.Hashable = None,
         default: tp.Any = dataclasses.MISSING,
         default_factory: tp.Any = dataclasses.MISSING,
         init: bool = True,
@@ -25,7 +23,7 @@ class RefField(dataclasses.Field, tp.Generic[A, K]):
         if metadata is None:
             metadata = {}
         super().__init__(default, default_factory, init, repr, hash, compare, metadata)
-        self.key = key
+        self.collection = collection
         self._first_get_call = True
         self.class_field_name: tp.Optional[str] = None
 
@@ -54,7 +52,9 @@ class RefField(dataclasses.Field, tp.Generic[A, K]):
         if isinstance(value, Ref):
             raise ValueError("Cannot change Ref")
         elif hasattr(obj, self.object_field_name):
-            ref: Ref[A, K] = getattr(obj, self.object_field_name)
+            ref: Ref[A] = getattr(obj, self.object_field_name)
             ref.value = value
         else:
-            obj.__dict__[self.object_field_name] = Ref(value, key=self.key)
+            obj.__dict__[self.object_field_name] = Ref(
+                value, collection=self.collection
+            )

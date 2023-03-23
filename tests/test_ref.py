@@ -35,7 +35,7 @@ class TestRef:
         assert isinstance(index, refx.Deref)
 
     def test_ref_trace_level(self):
-        r1: refx.Ref[int, None] = refx.Ref(1)
+        r1: refx.Ref[int] = refx.Ref(1)
 
         @jax.jit
         def f():
@@ -98,7 +98,7 @@ class TestRef:
         assert pytree["b"] is not pytree0["b"]
 
     def test_barrier_edge_case(self):
-        r1: tp.Optional[refx.Ref[tp.Any, None]] = None
+        r1: tp.Optional[refx.Ref[tp.Any]] = None
 
         @jax.jit
         def f():
@@ -129,7 +129,7 @@ class TestRef:
         x = g()
 
     def test_cross_barrier(self):
-        r1: refx.Ref[int, None] = refx.Ref(1)
+        r1: refx.Ref[int] = refx.Ref(1)
 
         @jax.jit
         def g(r2):
