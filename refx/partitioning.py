@@ -8,6 +8,7 @@ Predicate = tp.Callable[[tp.Any], bool]
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
 KeyPath = tp.Tuple[tp.Hashable, ...]
+LeafPredicate = tp.Callable[[tp.Any], bool]
 
 
 class StrPath(tp.Tuple[str, ...]):
@@ -60,11 +61,15 @@ def _key_path_to_str_path(key_path: KeyPath) -> StrPath:
 
 
 def partition_tree(
-    pytree, *predicates: Predicate
+    pytree,
+    *predicates: Predicate,
+    is_leaf: tp.Optional[LeafPredicate] = None,
 ) -> tp.Tuple[tp.Tuple[Partition, ...], jax.tree_util.PyTreeDef]:
     paths_leaves: tp.List[tp.Tuple[KeyPath, Leaf]]
     paths_leaves, treedef = jax.tree_util.tree_flatten_with_path(
-        pytree, is_leaf=lambda x: isinstance(x, Deref) or x is NOTHING
+        pytree,
+        is_leaf=lambda x: (isinstance(x, Deref) or x is NOTHING)
+        or (False if is_leaf is None else is_leaf(x)),
     )
 
     leaves: tp.Tuple[Leaf, ...]
@@ -91,8 +96,10 @@ def partition_tree(
     return partitions, treedef
 
 
-def get_partition(predicate: Predicate, pytree) -> Partition:
-    (partition, _rest), _treedef = partition_tree(pytree, predicate)
+def get_partition(
+    predicate: Predicate, pytree, is_leaf: tp.Optional[LeafPredicate] = None
+) -> Partition:
+    (partition, _rest), _treedef = partition_tree(pytree, predicate, is_leaf=is_leaf)
     return partition
 
 

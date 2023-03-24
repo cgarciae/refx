@@ -96,6 +96,10 @@ class Ref(tp.Generic[A]):
             raise ValueError("Cannot mutate ref from different trace level")
         self._value = value
 
+    @property
+    def index(self) -> int:
+        return -id(self)
+
 
 @tpe.final
 class Value(tp.Generic[A]):
@@ -223,7 +227,7 @@ def deref_fn(ref_index: tp.Dict[Ref[tp.Any], int], x: tp.Any) -> tp.Any:
         else:
             return Index(ref_index[x], x.collection)
     elif isinstance(x, Deref) and ref_index:
-        raise ValueError("Cannot 'deref' pytree with a mix of Refs and Derefs")
+        raise ValueError("Cannot 'deref' pytree containing Derefs")
     else:
         return x
 
@@ -249,7 +253,7 @@ def deref(pytree: A) -> A:
 
 def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any]], x: tp.Any) -> tp.Any:
     if isinstance(x, Ref):
-        raise ValueError("Cannot 'reref' pytree with a mix of Refs and Derefs")
+        raise ValueError("Cannot 'reref' pytree containing Refs")
     elif isinstance(x, Value):
         if x.index in index_ref:
             raise ValueError("Value already exists")
@@ -302,31 +306,30 @@ def update_from(target_tree: tp.Any, source_tree: tp.Any):
             f"{len(target_leaves)} and {len(source_leaves)}"
         )
 
-    seen_refs: tp.Set[Ref[tp.Any]] = set()
-    seen_indexes: tp.Set[int] = set()
+    ref_to_index: tp.Dict[Ref[tp.Any], int] = {}
+    index_to_ref: tp.Dict[int, Ref[tp.Any]] = {}
     source_has_ref = False
     source_has_deref = False
 
     for i, (target_leaf, source_leaf) in enumerate(zip(target_leaves, source_leaves)):
+        if isinstance(source_leaf, Deref):
+            source_has_deref = True
+        elif isinstance(source_leaf, Ref):
+            source_has_ref = True
+        if source_has_ref and source_has_deref:
+            raise ValueError("Got source with mixed Ref and Deref instances")
+
         if isinstance(target_leaf, Ref):
-            if target_leaf in seen_refs:
-                if not isinstance(source_leaf, Index):
-                    raise ValueError(
-                        f"Ref '{type(target_leaf).__name__}' at position [{i}] has "
-                        f"already been updated, trying to update it with "
-                        f"'{type(source_leaf).__name__}'"
-                    )
+            if target_leaf in ref_to_index:
+                if isinstance(source_leaf, (Ref, Index)):
+                    if ref_to_index[target_leaf] != source_leaf.index:
+                        raise ValueError
+                else:
+                    raise ValueError
                 continue
-            elif isinstance(source_leaf, Ref):
-                # use a negative index to avoid collisions
-                # with indexes from Deref instances
-                index = -id(source_leaf)
-                value = source_leaf.value
-                source_has_ref = True
-            elif isinstance(source_leaf, Value):
-                index = source_leaf.index
-                value = source_leaf.value
-                source_has_deref = True
+            elif isinstance(source_leaf, (Value, Ref)):
+                target_leaf.value = source_leaf.value
+                ref_to_index[target_leaf] = source_leaf.index
             elif isinstance(source_leaf, Index):
                 raise ValueError(
                     f"Unseen Ref '{type(target_leaf).__name__}' at position [{i}] "
@@ -337,11 +340,6 @@ def update_from(target_tree: tp.Any, source_tree: tp.Any):
                     f"Unexpected source type '{type(source_leaf).__name__}' "
                     f"at position [{i}]"
                 )
-            if source_has_ref and source_has_deref:
-                raise ValueError("Got source with mixed Ref and Deref instances")
-            target_leaf.value = value
-            seen_refs.add(target_leaf)
-            seen_indexes.add(index)
         elif isinstance(target_leaf, Deref):
             raise ValueError(
                 f"Target partition should not contain Deref instances, got "
