@@ -17,4 +17,4 @@ from .ref import (
     update_from,
 )
 from .ref_field import RefField
-from .filters import dagify
+from .filters import dagify, filter_jit, filter_grad

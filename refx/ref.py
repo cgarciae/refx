@@ -294,10 +294,10 @@ def reref(pytree: A) -> A:
 
 def update_from(target_tree: tp.Any, source_tree: tp.Any):
     target_leaves = jtu.tree_leaves(
-        target_tree, is_leaf=lambda x: isinstance(x, Referential)
+        target_tree, is_leaf=lambda x: isinstance(x, Referential) or x is NOTHING
     )
     source_leaves = jtu.tree_leaves(
-        source_tree, is_leaf=lambda x: isinstance(x, Referential)
+        source_tree, is_leaf=lambda x: isinstance(x, Referential) or x is NOTHING
     )
 
     if len(target_leaves) != len(source_leaves):
