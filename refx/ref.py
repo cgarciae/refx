@@ -1,6 +1,5 @@
 from functools import partial
 import typing as tp
-import typing_extensions as tpe
 
 import jax
 import jax.tree_util as jtu
@@ -118,23 +117,23 @@ class Value(Deref, tp.Generic[A]):
         return Ref(self.value, self.collection)
 
     def __repr__(self) -> str:
-        return f"Value(index={self.index}, collection={self.collection})"
+        return f"Value(index={self.index}, collection={repr(self.collection)})"
 
 
-def _value_index_flatten_with_keys(
+def _value_flatten_with_keys(
     x: Value[A],
 ) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, A]], tp.Tuple[int, tp.Hashable]]:
     return ((jtu.GetAttrKey("value"), x.value),), (x.index, x.collection)
 
 
-def _value_index_unflatten(
+def _value_unflatten(
     aux_data: tp.Tuple[int, tp.Hashable], children: tp.Tuple[A]
 ) -> Value[A]:
     return Value(children[0], *aux_data)
 
 
 jtu.register_pytree_with_keys(
-    Value, _value_index_flatten_with_keys, _value_index_unflatten
+    Value, _value_flatten_with_keys, _value_unflatten
 )
 
 
