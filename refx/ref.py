@@ -35,44 +35,31 @@ NOTHING = Nothing()
 jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
-class ReferentialfMeta(type):
-    def __subclasscheck__(self, __subclass: type) -> bool:
-        return issubclass(__subclass, (Ref, Value, Index))
+class Referential:
+    __slots__ = ()
 
-    def __instancecheck__(self, __instance: object) -> bool:
-        return isinstance(__instance, (Ref, Value, Index))
-
-
-class Referential(tp.Generic[K], metaclass=ReferentialfMeta):
     @property
     def index(self) -> int:
         ...
 
     @property
-    def collection(self) -> K:
+    def collection(self) -> tp.Hashable:
         ...
 
 
-class DerefMeta(type):
-    def __subclasscheck__(self, __subclass: type) -> bool:
-        return issubclass(__subclass, (Value, Index))
+class Deref(Referential):
+    __slots__ = ()
 
-    def __instancecheck__(self, __instance: object) -> bool:
-        return isinstance(__instance, (Value, Index))
-
-
-class Deref(tp.Generic[K], metaclass=DerefMeta):
     @property
     def index(self) -> int:
         ...
 
     @property
-    def collection(self) -> K:
+    def collection(self) -> tp.Hashable:
         ...
 
 
-@tpe.final
-class Ref(tp.Generic[A]):
+class Ref(Referential, tp.Generic[A]):
     __slots__ = ("_value", "_collection", "_trace")
 
     def __init__(self, value: A, collection: tp.Hashable = None):
@@ -100,9 +87,14 @@ class Ref(tp.Generic[A]):
     def index(self) -> int:
         return -id(self)
 
+    def to_value(self, index: int) -> "Value[A]":
+        return Value(self.value, index, self.collection)
 
-@tpe.final
-class Value(tp.Generic[A]):
+    def to_index(self, index: int) -> "Index":
+        return Index(index, self.collection)
+
+
+class Value(Deref, tp.Generic[A]):
     __slots__ = ("_value", "_index", "_collection")
 
     def __init__(self, value: A, index: int, collection: tp.Hashable):
@@ -122,6 +114,12 @@ class Value(tp.Generic[A]):
     def collection(self) -> tp.Hashable:
         return self._collection
 
+    def to_ref(self) -> "Ref[A]":
+        return Ref(self.value, self.collection)
+
+    def __repr__(self) -> str:
+        return f"Value(index={self.index}, collection={self.collection})"
+
 
 def _value_index_flatten_with_keys(
     x: Value[A],
@@ -140,8 +138,7 @@ jtu.register_pytree_with_keys(
 )
 
 
-@tpe.final
-class Index:
+class Index(Deref):
     __slots__ = ("_index", "_collection")
 
     def __init__(self, index: int, collection: tp.Hashable):
@@ -155,6 +152,9 @@ class Index:
     @property
     def collection(self) -> tp.Hashable:
         return self._collection
+
+    def __repr__(self) -> str:
+        return f"Index(index={self.index}, collection={self.collection})"
 
 
 def _index_flatten(x: Index) -> tp.Tuple[tp.Tuple[()], tp.Tuple[int, tp.Hashable]]:
@@ -223,9 +223,9 @@ def deref_fn(ref_index: tp.Dict[Ref[tp.Any], int], x: tp.Any) -> tp.Any:
         if x not in ref_index:
             index = len(ref_index)
             ref_index[x] = index
-            return Value(x.value, index, collection=x.collection)
+            return x.to_value(index)
         else:
-            return Index(ref_index[x], x.collection)
+            return x.to_index(ref_index[x])
     elif isinstance(x, Deref) and ref_index:
         raise ValueError("Cannot 'deref' pytree containing Derefs")
     else:
@@ -257,7 +257,7 @@ def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any]], x: tp.Any) -> tp.Any:
     elif isinstance(x, Value):
         if x.index in index_ref:
             raise ValueError("Value already exists")
-        ref = Ref(x.value, x.collection)
+        ref = x.to_ref()
         index_ref[x.index] = ref
         return ref
     elif isinstance(x, Index):

@@ -8,6 +8,14 @@ A = tp.TypeVar("A")
 
 
 class TestRef:
+    def test_slots(self):
+        ref = refx.Ref(1)
+        assert not hasattr(ref, "__dict__")
+        value = refx.Value(1, 0, None)
+        assert not hasattr(value, "__dict__")
+        index = refx.Index(0, None)
+        assert not hasattr(index, "__dict__")
+
     def test_ref(self):
         r1 = refx.Ref(1)
         assert r1.value == 1
