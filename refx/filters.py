@@ -115,7 +115,6 @@ class FilterGrad:
         self,
         fun: tp.Callable[..., tp.Any],
         predicate: Predicate,
-        argnums: tp.Union[int, tp.Sequence[int]],
         has_aux: bool,
         holomorphic: bool,
         allow_int: bool,
@@ -129,34 +128,31 @@ class FilterGrad:
             allow_int=allow_int,
             reduce_axes=reduce_axes,
         )
-        def grad_fn(diff, non_diff, treedef):
+        def grad_fn(diff, non_diff, treedef, *args):
             diff, non_diff = refx.reref((diff, non_diff))
-            args = refx.merge_partitions((diff, non_diff), treedef)
-            out = fun(*args)
+            pytree = refx.merge_partitions((diff, non_diff), treedef)
+            out = fun(pytree, *args)
             out = refx.deref(out)
             return out
 
         self.grad_fn = grad_fn
         self.predicate = predicate
         self.has_aux = has_aux
-        self.argnums = (argnums,) if isinstance(argnums, int) else tuple(argnums)
 
-    def __call__(self, *args):
+    def __call__(self, pytree, *args):
         # split into differentiable and non-differentiable args
-        differentiable_refs = {
-            leaf
-            for leaf in jtu.tree_leaves(
-                tuple(arg for i, arg in enumerate(args) if i in self.argnums),
-                is_leaf=lambda leaf: isinstance(leaf, refx.Referential),
-            )
-            if isinstance(leaf, refx.Referential)
-        }
+        # differentiable_refs = {
+        #     leaf
+        #     for leaf in jtu.tree_leaves(
+        #         tuple(arg for i, arg in enumerate(args) if i in self.argnums),
+        #         is_leaf=lambda leaf: isinstance(leaf, refx.Referential),
+        #     )
+        #     if isinstance(leaf, refx.Referential)
+        # }
 
-        (diff, nondiff), treedef = refx.partition_tree(
-            args, lambda x: x in differentiable_refs and self.predicate(x)
-        )
+        (diff, nondiff), treedef = refx.partition_tree(pytree, self.predicate)
         diff, nondiff = refx.deref((diff, nondiff))
-        grads = self.grad_fn(diff, nondiff, treedef)
+        grads = self.grad_fn(diff, nondiff, treedef, *args)
 
         if self.has_aux:
             grad, aux = grads
@@ -170,14 +166,13 @@ class FilterGrad:
 
 
 def any_ref(x):
-    return True
+    return isinstance(x, refx.Referential)
 
 
 def filter_grad(
     fun: tp.Callable[..., tp.Any],
     predicate: Predicate = any_ref,
     *,
-    argnums: tp.Union[int, tp.Sequence[int]] = 0,
     has_aux: bool = False,
     holomorphic: bool = False,
     allow_int: bool = False,
@@ -186,7 +181,6 @@ def filter_grad(
     ref_grad = FilterGrad(
         fun,
         predicate,
-        argnums=argnums,
         has_aux=has_aux,
         holomorphic=holomorphic,
         allow_int=allow_int,

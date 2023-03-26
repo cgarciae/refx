@@ -116,13 +116,13 @@ class TestGrad:
         grad = f(pytree)
         assert isinstance(grad, dict)
 
-        assert grad[("0", "a", "0")].value == 2.0
-        assert isinstance(grad[("0", "a", "0")], refx.Value)
-        assert grad[("0", "a", "1")].value == 1.0
-        assert isinstance(grad[("0", "a", "1")], refx.Value)
-        assert isinstance(grad[("0", "b")], refx.Index)
-        assert grad[("0", "c")] is refx.NOTHING
-        assert grad[("0", "d")] is refx.NOTHING
+        assert grad[("a", "0")].value == 2.0
+        assert isinstance(grad[("a", "0")], refx.Value)
+        assert grad[("a", "1")].value == 1.0
+        assert isinstance(grad[("a", "1")], refx.Value)
+        assert isinstance(grad[("b",)], refx.Index)
+        assert grad[("c",)] is refx.NOTHING
+        assert grad[("d",)] is refx.NOTHING
 
         refx.update_from(pytree, grad)
         assert pytree["a"][0].value == 2.0
@@ -150,14 +150,14 @@ class TestGrad:
         grad = f(pytree)
         assert isinstance(grad, dict)
 
-        assert grad[("0", "a", "0")].value == 2.0
-        assert isinstance(grad[("0", "a", "0")], refx.Value)
-        assert grad[("0", "a", "0")].collection == "params"
-        assert grad[("0", "a", "1")] is refx.NOTHING
-        assert isinstance(grad[("0", "b")], refx.Index)
-        assert grad[("0", "b")].collection == "params"
-        assert grad[("0", "c")] is refx.NOTHING
-        assert grad[("0", "d")] is refx.NOTHING
+        assert grad[("a", "0")].value == 2.0
+        assert isinstance(grad[("a", "0")], refx.Value)
+        assert grad[("a", "0")].collection == "params"
+        assert grad[("a", "1")] is refx.NOTHING
+        assert isinstance(grad[("b",)], refx.Index)
+        assert grad[("b",)].collection == "params"
+        assert grad[("c",)] is refx.NOTHING
+        assert grad[("d",)] is refx.NOTHING
 
         refx.update_from(refx.get_partition(collection("params"), pytree), grad)
         assert pytree["a"][0].value == 2.0
@@ -185,13 +185,13 @@ class TestGrad:
         grad = f(pytree)
         assert isinstance(grad, dict)
 
-        assert grad[("0", "a", "0")] is refx.NOTHING
-        assert grad[("0", "a", "1")].value == 1.0
-        assert isinstance(grad[("0", "a", "1")], refx.Value)
-        assert grad[("0", "a", "1")].collection == "batch_stats"
-        assert grad[("0", "b")] is refx.NOTHING
-        assert grad[("0", "c")] is refx.NOTHING
-        assert grad[("0", "d")] is refx.NOTHING
+        assert grad[("a", "0")] is refx.NOTHING
+        assert grad[("a", "1")].value == 1.0
+        assert isinstance(grad[("a", "1")], refx.Value)
+        assert grad[("a", "1")].collection == "batch_stats"
+        assert grad[("b",)] is refx.NOTHING
+        assert grad[("c",)] is refx.NOTHING
+        assert grad[("d",)] is refx.NOTHING
 
         refx.update_from(refx.get_partition(collection("batch_stats"), pytree), grad)
         assert pytree["a"][0].value == 10.0
