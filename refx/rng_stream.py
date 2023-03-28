@@ -17,7 +17,6 @@ class RngStream:
         "_key",
         "_count",
         "_count_path",
-        "_collection",
         "_trace",
     )
 
@@ -26,16 +25,14 @@ class RngStream:
         key: jax.random.KeyArray,
         count: int = 0,
         count_path: tp.Tuple[int, ...] = (),
-        collection: tp.Hashable = None,
     ):
         self._key = key
         self._count = count
         self._count_path = count_path
-        self._collection = collection
         self._trace = tracers.current_trace()
 
-    def _validate_trace(self):
-        if self._trace is not tracers.current_trace():
+    def _validate_trace(self, tracer_seq=()):
+        if self._trace is not tracers.current_trace(tracer_seq):
             raise ValueError("Rng used in a different trace")
 
     @property
@@ -51,43 +48,35 @@ class RngStream:
     def count_path(self) -> tp.Tuple[int, ...]:
         return self._count_path
 
-    @property
-    def collection(self) -> tp.Hashable:
-        return self._collection
-
     def next(self) -> jax.random.KeyArray:
         self._validate_trace()
         data = _stable_hash(str((self._count_path, self._count)))
         self._count += 1
         return jax.random.fold_in(self._key, data)
 
-    def fork(self) -> "RngStream":
-        self._validate_trace()
+    def fork(self, tracers_seq=()) -> "RngStream":
+        self._validate_trace(tracers_seq)
         count_path = self._count_path + (self._count,)
         self._count += 1
-        return RngStream(self._key, count_path=count_path, collection=self._collection)
+        return RngStream(self._key, count_path=count_path)
 
 
 def _rng_flatten_with_keys(
     rng: RngStream,
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[tp.Hashable, jax.random.KeyArray], ...],
-    tp.Tuple[int, tp.Tuple[int, ...], tp.Hashable],
+    tp.Tuple[int, tp.Tuple[int, ...]],
 ]:
-    return ((jtu.GetAttrKey("key"), rng.key),), (
-        rng.count,
-        rng.count_path,
-        rng.collection,
-    )
+    return ((jtu.GetAttrKey("key"), rng.key),), (rng.count, rng.count_path)
 
 
 def _rng_unflatten(
-    aux_data: tp.Tuple[int, tp.Tuple[int, ...], tp.Hashable],
+    aux_data: tp.Tuple[int, tp.Tuple[int, ...]],
     children: tp.Tuple[jax.random.KeyArray, ...],
 ) -> RngStream:
-    count, count_path, collection = aux_data
+    count, count_path = aux_data
     key = children[0]
-    return RngStream(key, count, count_path, collection)
+    return RngStream(key, count, count_path)
 
 
 jax.tree_util.register_pytree_with_keys(

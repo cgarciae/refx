@@ -128,10 +128,19 @@ class FilterGrad:
             allow_int=allow_int,
             reduce_axes=reduce_axes,
         )
-        def grad_fn(diff, non_diff, treedef, *args):
+        def grad_fn(diff: Partition, non_diff: Partition, treedef, *args):
+            # scope has been forked but not traced
+            # so we need to update it
+            scope = refx.current_scope()
+            scope.unsafe_trace_update()
+
+            tracers = jtu.tree_leaves(non_diff)
             diff, non_diff = refx.reref((diff, non_diff))
             pytree = refx.merge_partitions((diff, non_diff), treedef)
-            out = fun(pytree, *args)
+
+            with refx.scope(refx.current_scope().fork(tracers)):
+                out = fun(pytree, *args)
+
             out = refx.deref(out)
             return out
 
@@ -140,16 +149,6 @@ class FilterGrad:
         self.has_aux = has_aux
 
     def __call__(self, pytree, *args):
-        # split into differentiable and non-differentiable args
-        # differentiable_refs = {
-        #     leaf
-        #     for leaf in jtu.tree_leaves(
-        #         tuple(arg for i, arg in enumerate(args) if i in self.argnums),
-        #         is_leaf=lambda leaf: isinstance(leaf, refx.Referential),
-        #     )
-        #     if isinstance(leaf, refx.Referential)
-        # }
-
         (diff, nondiff), treedef = refx.partition_tree(pytree, self.predicate)
         diff, nondiff = refx.deref((diff, nondiff))
         grads = self.grad_fn(diff, nondiff, treedef, *args)

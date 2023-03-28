@@ -1,0 +1,101 @@
+import contextlib
+import dataclasses
+import typing as tp
+from contextvars import ContextVar
+from types import MappingProxyType
+
+import jax
+import jax.tree_util as jtu
+
+from refx import tracers
+from refx.rng_stream import RngStream
+import refx
+
+KeyArray = jax.random.KeyArray
+
+
+class Scope:
+    __slots__ = ("_rng_streams", "_flags")
+
+    def __init__(
+        self,
+        rng_streams: tp.Mapping[tp.Hashable, RngStream],
+        flags: tp.Mapping[str, tp.Hashable],
+    ):
+        self._rng_streams = MappingProxyType(rng_streams)
+        self._flags = MappingProxyType(flags)
+
+    @classmethod
+    def empty(cls) -> "Scope":
+        return Scope({}, {})
+
+    @property
+    def rng_streams(self) -> tp.Mapping[tp.Hashable, RngStream]:
+        return self._rng_streams
+
+    @property
+    def flags(self) -> tp.Mapping[str, tp.Hashable]:
+        return self._flags
+
+    def fork(self, tracers_seq=()) -> "Scope":
+        rng_streams = {k: v.fork(tracers_seq) for k, v in self._rng_streams.items()}
+        return Scope(rng_streams, self._flags)
+
+    def unsafe_trace_update(self):
+        for rng_stream in self._rng_streams.values():
+            rng_stream._trace = tracers.current_trace()
+
+
+def _scope_flatten_with_keys(scope: Scope):
+    return ((jtu.GetAttrKey("rng_streams"), scope._rng_streams.copy()),), scope._flags
+
+
+def _scope_unflatten(flags, rng_streams):
+    return Scope(rng_streams, flags)
+
+
+jtu.register_pytree_with_keys(Scope, _scope_flatten_with_keys, _scope_unflatten)
+
+
+@dataclasses.dataclass
+class Context:
+    scope_stack: tp.List[Scope] = dataclasses.field(
+        default_factory=lambda: [Scope.empty()]
+    )
+
+
+_CONTEXT = ContextVar("context", default=Context())
+
+
+def current_scope() -> Scope:
+    return _CONTEXT.get().scope_stack[-1]
+
+
+def set_scope(scope: Scope):
+    context = _CONTEXT.get()
+    context.scope_stack.append(scope)
+
+
+def reset_scope():
+    context = _CONTEXT.get()
+    context.scope_stack.pop()
+
+
+@contextlib.contextmanager
+def scope(
+    rng_keys_or_scope: tp.Union[tp.Mapping[tp.Hashable, KeyArray], Scope],
+    **flags: tp.Hashable
+):
+    if isinstance(rng_keys_or_scope, Scope):
+        if flags:
+            raise ValueError("Cannot set flags when passing a Scope")
+        scope = rng_keys_or_scope
+    else:
+        rng_streams = {k: RngStream(v) for k, v in rng_keys_or_scope.items()}
+        scope = Scope(rng_streams, flags)
+    context = _CONTEXT.get()
+    context.scope_stack.append(scope)
+    try:
+        yield
+    finally:
+        context.scope_stack.pop()

@@ -47,7 +47,6 @@ class TestRngStream:
         assert rng1.count == 0
         assert rng1.count_path == (0,)
         assert rng1.key is rng.key
-        assert rng1.collection is rng.collection
 
     def test_rng_trace_level_constraints(self):
         key0 = jax.random.PRNGKey(0)

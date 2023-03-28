@@ -19,3 +19,5 @@ from .ref import (
 from .ref_field import RefField
 from .filters import dagify, filter_jit, filter_grad
 from .rng_stream import RngStream
+
+from .scope import Scope, scope, current_scope, set_scope, reset_scope

@@ -79,6 +79,19 @@ class TestRef:
         assert r3 is not r2
         assert r3.value == 2
 
+    def test_ref_trace_level_grad(self):
+        r1: refx.Ref[int] = refx.Ref(1)
+
+        @jax.grad
+        def f(w):
+            with pytest.raises(
+                ValueError, match="Cannot mutate ref from different trace level"
+            ):
+                r1.value = 2
+            return 1.0
+
+        f(3.0)
+
     def test_deref_through_jit(self):
         r1 = refx.Ref(1)
         r2 = refx.Ref(2)

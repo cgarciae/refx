@@ -199,3 +199,23 @@ class TestGrad:
         assert pytree["b"].value == 10.0
         assert pytree["c"] == 7
         assert pytree["d"] == 5.0
+
+    def test_scope(self):
+        p1 = refx.Ref(10.0)
+        p2 = refx.Ref(20.0)
+
+        pytree: tp.Dict[str, tp.Any] = {
+            "a": [p1, p2],
+            "b": p1,
+            "c": 7,
+            "d": 5.0,
+        }
+
+        @refx.filter_grad
+        def f(pytree):
+            # sum all params
+            return pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value
+
+        with refx.scope({"a": jax.random.PRNGKey(0)}):
+            grad = f(pytree)
+        assert isinstance(grad, dict)

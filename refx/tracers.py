@@ -6,9 +6,9 @@ import jax.core
 from jax._src.core import _why_alive
 
 
-def current_trace():
+def current_trace(tree=()):
     """Returns the innermost Jax tracer."""
-    return jax.core.find_top_trace(()).main
+    return jax.core.find_top_trace(tree).main
 
 
 def trace_level(main):
@@ -18,6 +18,6 @@ def trace_level(main):
     return float("-inf")
 
 
-def current_trace_level():
+def current_trace_level(tree=()):
     """Returns the level of the current trace."""
-    return trace_level(current_trace())
+    return trace_level(current_trace(tree))
