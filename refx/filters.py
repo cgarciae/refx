@@ -130,10 +130,9 @@ class FilterGrad:
             reduce_axes=reduce_axes,
         )
         def grad_fn(diff: Partition, non_diff: Partition, treedef, *args):
-            # scope has been forked but not traced
-            # so we need to update it
-            scope = refx.current_scope()
-            scope.unsafe_trace_update()
+            # scope has been forked but was not traced
+            # so we need to manually update it
+            refx.current_scope().unsafe_trace_update()
 
             diff_trace = refx.tracers.get_top_trace(diff)
 

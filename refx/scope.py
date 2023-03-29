@@ -59,13 +59,13 @@ jtu.register_pytree_with_keys(Scope, _scope_flatten_with_keys, _scope_unflatten)
 
 
 @dataclasses.dataclass
-class Context(threading.local):
+class _ScopeContext(threading.local):
     scope_stack: tp.List[Scope] = dataclasses.field(
         default_factory=lambda: [Scope.empty()]
     )
 
 
-_CONTEXT = Context()
+_CONTEXT = _ScopeContext()
 
 
 def current_scope() -> Scope:
@@ -85,7 +85,7 @@ def reset_scope():
 @contextlib.contextmanager
 def scope(
     rng_keys_or_scope: tp.Union[tp.Mapping[tp.Hashable, KeyArray], Scope],
-    **flags: tp.Hashable
+    **flags: tp.Hashable,
 ):
     if isinstance(rng_keys_or_scope, Scope):
         if flags:
@@ -100,3 +100,12 @@ def scope(
         yield
     finally:
         context.scope_stack.pop()
+
+
+def make_rng(collection: tp.Hashable) -> KeyArray:
+    scope = current_scope()
+
+    if collection not in scope.rng_streams:
+        raise ValueError(f"Unknown collection: {collection}")
+
+    return scope.rng_streams[collection].next()
