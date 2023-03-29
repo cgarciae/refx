@@ -85,9 +85,10 @@ class TestRef:
         @jax.grad
         def f(w):
             with pytest.raises(
-                ValueError, match="Cannot mutate ref from different trace level"
+                ValueError,
+                match="Cannot mutate ref with value that contains tracers from other",
             ):
-                r1.value = 2
+                r1.value = w
             return 1.0
 
         f(3.0)

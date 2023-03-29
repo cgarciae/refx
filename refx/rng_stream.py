@@ -6,10 +6,12 @@ from refx import tracers
 import jax.tree_util as jtu
 
 
-def _stable_hash(x: str) -> int:
-    _hash = hashlib.blake2s(x.encode())
-    # & 0xFFFFFFFF is to make sure the hash is a 32-bit integer
-    return int(_hash.hexdigest(), 16) & 0xFFFFFFFF
+def _stable_hash(data: tp.Tuple[int, ...]) -> int:
+    hash_str = " ".join(str(x) for x in data)
+    _hash = hashlib.blake2s(hash_str.encode())
+    hash_bytes = _hash.digest()
+    # uint32 is represented as 4 bytes in big endian
+    return int.from_bytes(hash_bytes[:4], byteorder="big")
 
 
 class RngStream:
@@ -17,7 +19,8 @@ class RngStream:
         "_key",
         "_count",
         "_count_path",
-        "_trace",
+        "_jax_trace",
+        "_refx_trace",
     )
 
     def __init__(
@@ -29,10 +32,14 @@ class RngStream:
         self._key = key
         self._count = count
         self._count_path = count_path
-        self._trace = tracers.current_trace()
+        self._jax_trace = tracers.current_jax_trace()
+        self._refx_trace = tracers.current_refx_trace()
 
-    def _validate_trace(self, tracer_seq=()):
-        if self._trace is not tracers.current_trace(tracer_seq):
+    def _validate_trace(self):
+        if (
+            self._jax_trace is not tracers.current_jax_trace()
+            or self._refx_trace is not tracers.current_refx_trace()
+        ):
             raise ValueError("Rng used in a different trace")
 
     @property
@@ -50,12 +57,12 @@ class RngStream:
 
     def next(self) -> jax.random.KeyArray:
         self._validate_trace()
-        data = _stable_hash(str((self._count_path, self._count)))
+        fold_data = _stable_hash(self._count_path + (self._count,))
         self._count += 1
-        return jax.random.fold_in(self._key, data)
+        return jax.random.fold_in(self._key, fold_data)
 
-    def fork(self, tracers_seq=()) -> "RngStream":
-        self._validate_trace(tracers_seq)
+    def fork(self) -> "RngStream":
+        self._validate_trace()
         count_path = self._count_path + (self._count,)
         self._count += 1
         return RngStream(self._key, count_path=count_path)

@@ -8,6 +8,7 @@ from jax._src.interpreters import pxla
 
 import refx
 from refx.partitioning import Partition, Predicate
+import refx.tracers
 
 A = tp.TypeVar("A")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
@@ -134,11 +135,13 @@ class FilterGrad:
             scope = refx.current_scope()
             scope.unsafe_trace_update()
 
-            tracers = jtu.tree_leaves(non_diff)
-            diff, non_diff = refx.reref((diff, non_diff))
-            pytree = refx.merge_partitions((diff, non_diff), treedef)
+            diff_trace = refx.tracers.get_top_trace(diff)
 
-            with refx.scope(refx.current_scope().fork(tracers)):
+            with refx.scope(refx.current_scope().fork()), refx.tracers.refx_trace(
+                diff_trace
+            ):
+                diff, non_diff = refx.reref((diff, non_diff))
+                pytree = refx.merge_partitions((diff, non_diff), treedef)
                 out = fun(pytree, *args)
 
             out = refx.deref(out)

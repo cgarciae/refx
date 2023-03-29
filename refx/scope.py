@@ -1,7 +1,7 @@
 import contextlib
 import dataclasses
+import threading
 import typing as tp
-from contextvars import ContextVar
 from types import MappingProxyType
 
 import jax
@@ -37,13 +37,14 @@ class Scope:
     def flags(self) -> tp.Mapping[str, tp.Hashable]:
         return self._flags
 
-    def fork(self, tracers_seq=()) -> "Scope":
-        rng_streams = {k: v.fork(tracers_seq) for k, v in self._rng_streams.items()}
+    def fork(self) -> "Scope":
+        rng_streams = {k: v.fork() for k, v in self._rng_streams.items()}
         return Scope(rng_streams, self._flags)
 
     def unsafe_trace_update(self):
         for rng_stream in self._rng_streams.values():
-            rng_stream._trace = tracers.current_trace()
+            rng_stream._jax_trace = tracers.current_jax_trace()
+            rng_stream._refx_trace = tracers.current_refx_trace()
 
 
 def _scope_flatten_with_keys(scope: Scope):
@@ -58,26 +59,26 @@ jtu.register_pytree_with_keys(Scope, _scope_flatten_with_keys, _scope_unflatten)
 
 
 @dataclasses.dataclass
-class Context:
+class Context(threading.local):
     scope_stack: tp.List[Scope] = dataclasses.field(
         default_factory=lambda: [Scope.empty()]
     )
 
 
-_CONTEXT = ContextVar("context", default=Context())
+_CONTEXT = Context()
 
 
 def current_scope() -> Scope:
-    return _CONTEXT.get().scope_stack[-1]
+    return _CONTEXT.scope_stack[-1]
 
 
 def set_scope(scope: Scope):
-    context = _CONTEXT.get()
+    context = _CONTEXT
     context.scope_stack.append(scope)
 
 
 def reset_scope():
-    context = _CONTEXT.get()
+    context = _CONTEXT
     context.scope_stack.pop()
 
 
@@ -93,7 +94,7 @@ def scope(
     else:
         rng_streams = {k: RngStream(v) for k, v in rng_keys_or_scope.items()}
         scope = Scope(rng_streams, flags)
-    context = _CONTEXT.get()
+    context = _CONTEXT
     context.scope_stack.append(scope)
     try:
         yield

@@ -59,12 +59,14 @@ class Deref(Referential):
 
 
 class Ref(Referential, tp.Generic[A]):
-    __slots__ = ("_value", "_collection", "_trace")
+    __slots__ = ("_value", "_collection", "_jax_trace", "_refx_trace", "_trace_set")
 
     def __init__(self, value: A, collection: tp.Hashable = None):
         self._value = value
         self._collection = collection
-        self._trace = tracers.current_trace()
+        self._jax_trace = tracers.current_jax_trace()
+        self._refx_trace = tracers.current_refx_trace()
+        self._trace_set = frozenset((self._jax_trace, self._refx_trace))
 
     @property
     def collection(self) -> tp.Hashable:
@@ -72,14 +74,28 @@ class Ref(Referential, tp.Generic[A]):
 
     @property
     def value(self) -> A:
-        if self._trace is not tracers.current_trace():
+        if (
+            self._jax_trace is not tracers.current_jax_trace()
+            or self._refx_trace is not tracers.current_refx_trace()
+        ):
             raise ValueError("Cannot access ref from different trace level")
         return self._value
 
     @value.setter
     def value(self, value: A):
-        if self._trace is not tracers.current_trace():
+        if (
+            self._jax_trace is not tracers.current_jax_trace()
+            or self._refx_trace is not tracers.current_refx_trace()
+        ):
             raise ValueError("Cannot mutate ref from different trace level")
+
+        invalid_traces = tracers.get_all_traces(value) - self._trace_set
+        if invalid_traces:
+            raise ValueError(
+                "Cannot mutate ref with value that contains tracers from other "
+                f"traces: {invalid_traces}"
+            )
+
         self._value = value
 
     @property
@@ -132,9 +148,7 @@ def _value_unflatten(
     return Value(children[0], *aux_data)
 
 
-jtu.register_pytree_with_keys(
-    Value, _value_flatten_with_keys, _value_unflatten
-)
+jtu.register_pytree_with_keys(Value, _value_flatten_with_keys, _value_unflatten)
 
 
 class Index(Deref):
