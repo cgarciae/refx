@@ -109,3 +109,10 @@ def make_rng(collection: tp.Hashable) -> KeyArray:
         raise ValueError(f"Unknown collection: {collection}")
 
     return scope.rng_streams[collection].next()
+
+
+def get_flag(name: str) -> tp.Hashable:
+    scope = current_scope()
+    if name not in scope.flags:
+        raise ValueError(f"Unknown flag: {name}")
+    return scope.flags[name]

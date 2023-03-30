@@ -20,4 +20,12 @@ from .ref_field import RefField
 from .filters import dagify, filter_jit, filter_grad
 from .rng_stream import RngStream
 
-from .scope import Scope, scope, current_scope, set_scope, reset_scope
+from .scope import (
+    Scope,
+    scope,
+    current_scope,
+    set_scope,
+    reset_scope,
+    make_rng,
+    get_flag,
+)
