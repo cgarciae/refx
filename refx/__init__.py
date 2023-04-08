@@ -1,4 +1,4 @@
-from .partitioning import get_partition, merge_partitions, partition_tree
+from .partitioning import get_partition, merge_partitions, tree_partition, Partition
 from .ref import (
     NOTHING,
     Dag,
@@ -16,4 +16,4 @@ from .ref import (
     reref_unflatten,
     update_from,
 )
-from .ref_field import RefField
+from .ref_field import RefField, field

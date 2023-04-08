@@ -60,7 +60,7 @@ def _key_path_to_str_path(key_path: KeyPath) -> StrPath:
     return StrPath(_key_path_to_str_gen(key_path))
 
 
-def partition_tree(
+def tree_partition(
     pytree,
     *predicates: Predicate,
     is_leaf: tp.Optional[LeafPredicate] = None,
@@ -97,9 +97,11 @@ def partition_tree(
 
 
 def get_partition(
-    predicate: Predicate, pytree, is_leaf: tp.Optional[LeafPredicate] = None
+    pytree,
+    predicate: Predicate,
+    is_leaf: tp.Optional[LeafPredicate] = None,
 ) -> Partition:
-    (partition, _rest), _treedef = partition_tree(pytree, predicate, is_leaf=is_leaf)
+    (partition, _rest), _treedef = tree_partition(pytree, predicate, is_leaf=is_leaf)
     return partition
 
 

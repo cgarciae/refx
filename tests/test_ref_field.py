@@ -1,5 +1,6 @@
 import dataclasses
 import typing as tp
+import typing_extensions as tpe
 
 import jax
 import pytest
@@ -8,18 +9,23 @@ from simple_pytree import Pytree
 import refx
 
 
-def ref_field(
-    default: tp.Any = dataclasses.MISSING, *, key: tp.Hashable = None, **kwargs
-) -> tp.Any:
-    metadata = {"pytree_node": True}
-    return refx.RefField(collection=key, default=default, **kwargs, metadata=metadata)
+def field(
+    default: tp.Any = dataclasses.MISSING, *, collection: tp.Hashable = None, **kwargs
+):
+    metadata = {"pytree_node": True, "collection": collection}
+    return refx.field(default=default, **kwargs, metadata=metadata)
+
+
+@tpe.dataclass_transform(field_specifiers=(field,))
+def dataclass(*args, **kwargs):
+    return dataclasses.dataclass(*args, **kwargs)
 
 
 class TestRefField:
     def test_ref_field_dataclass(self):
-        @dataclasses.dataclass
+        @dataclass
         class Foo(Pytree):
-            a: int = ref_field()
+            a: int = field()
 
         foo1 = Foo(a=1)
         foo1.a = 2

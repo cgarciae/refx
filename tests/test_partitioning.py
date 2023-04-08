@@ -23,7 +23,7 @@ class TestPartitioning:
             "c": 100,
         }
 
-        (params, rest), treedef = refx.partition_tree(pytree, has_collection("params"))
+        (params, rest), treedef = refx.tree_partition(pytree, has_collection("params"))
 
         assert len(params) == 4
         assert len(rest) == 4
@@ -78,7 +78,7 @@ class TestPartitioning:
             "c": 100,
         }
 
-        params = refx.get_partition(has_collection("params"), pytree)
+        params = refx.get_partition(pytree, has_collection("params"))
 
         def loss(params):
             params = refx.reref(params)
@@ -103,7 +103,7 @@ class TestPartitioning:
             "d": 5.0,
         }
 
-        ref_partition = refx.get_partition(any_ref, pytree)
+        ref_partition = refx.get_partition(pytree, any_ref)
         assert ref_partition[("a", "0")] is p1
         assert ref_partition[("a", "1")] is p2
         assert ref_partition[("b",)] is p1
@@ -111,7 +111,7 @@ class TestPartitioning:
         assert ref_partition[("d",)] is refx.NOTHING
         assert len(ref_partition) == 5
 
-        ref_partition = refx.get_partition(any_ref, ref_partition)
+        ref_partition = refx.get_partition(ref_partition, any_ref)
         assert ref_partition[("a", "0")] is p1
         assert ref_partition[("a", "1")] is p2
         assert ref_partition[("b",)] is p1
