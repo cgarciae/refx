@@ -228,3 +228,14 @@ class TestRef:
 
         pytree = refx.reref(pytree)
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
+
+    def test_mutable(self):
+        r1 = refx.Ref(1, collection="params")
+        r2 = refx.Ref(2, collection="batch_stats")
+
+        with refx.mutable(lambda c: c == "params"):
+            r1.value = 3
+            with pytest.raises(
+                ValueError, match="Collection 'batch_stats' is not mutable"
+            ):
+                r2.value = 4

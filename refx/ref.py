@@ -1,3 +1,5 @@
+import contextlib
+import dataclasses
 from functools import partial
 import typing as tp
 
@@ -11,9 +13,41 @@ A_cov = tp.TypeVar("A_cov", covariant=True)
 B = tp.TypeVar("B")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 K = tp.TypeVar("K", bound=tp.Hashable)
+MutablePredicate = tp.Callable[[tp.Hashable], bool]
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
 Key = tp.Hashable
+
+
+def all_mutable(_):
+    return True
+
+
+@dataclasses.dataclass
+class RefContext:
+    mutable_stack: tp.List[MutablePredicate] = dataclasses.field(
+        default_factory=lambda: [all_mutable]
+    )
+
+
+_REF_CONTEXT = RefContext()
+
+
+@contextlib.contextmanager
+def mutable(mutable_fn: MutablePredicate):
+    _REF_CONTEXT.mutable_stack.append(mutable_fn)
+    try:
+        yield
+    finally:
+        _REF_CONTEXT.mutable_stack.pop()
+
+
+def is_mutable(collection: tp.Hashable) -> bool:
+    return _REF_CONTEXT.mutable_stack[-1](collection)
+
+
+def mutable_predicate() -> MutablePredicate:
+    return _REF_CONTEXT.mutable_stack[-1]
 
 
 class Nothing:
@@ -83,6 +117,9 @@ class Ref(Referential, tp.Generic[A]):
 
     @value.setter
     def value(self, value: A):
+        if not is_mutable(self.collection):
+            raise ValueError(f"Collection '{self.collection}' is not mutable")
+
         if (
             self._jax_trace is not tracers.current_jax_trace()
             or self._refx_trace is not tracers.current_refx_trace()

@@ -15,5 +15,8 @@ from .ref import (
     reref_flatten,
     reref_unflatten,
     update_from,
+    mutable,
+    is_mutable,
+    mutable_predicate,
 )
-from .ref_field import RefField, field
+from .ref_field import RefField

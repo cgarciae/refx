@@ -18,11 +18,11 @@ class Tracer(tp.Protocol):
 @contextlib.contextmanager
 def refx_trace(trace: MainTrace):
     """Sets the current Refx trace."""
-    _REFX_TRACE_CONTEXT.trace_stack.append(trace)
+    _TRACERS_CONTEXT.trace_stack.append(trace)
     try:
         yield
     finally:
-        _REFX_TRACE_CONTEXT.trace_stack.pop()
+        _TRACERS_CONTEXT.trace_stack.pop()
 
 
 def current_jax_trace() -> MainTrace:
@@ -32,7 +32,7 @@ def current_jax_trace() -> MainTrace:
 
 def current_refx_trace() -> MainTrace:
     """Returns the innermost Refx tracer."""
-    return _REFX_TRACE_CONTEXT.trace_stack[-1]
+    return _TRACERS_CONTEXT.trace_stack[-1]
 
 
 def get_top_trace(pytree: tp.Union[tp.Any, Tracer]) -> MainTrace:
@@ -63,7 +63,7 @@ def trace_level(main):
 
 
 @dataclasses.dataclass
-class _RefxTraceContext(threading.local):
+class _TracersContext(threading.local):
     """Thread-local context for the current Refx trace."""
 
     trace_stack: tp.List[MainTrace] = dataclasses.field(
@@ -71,4 +71,4 @@ class _RefxTraceContext(threading.local):
     )
 
 
-_REFX_TRACE_CONTEXT = _RefxTraceContext()
+_TRACERS_CONTEXT = _TracersContext()
