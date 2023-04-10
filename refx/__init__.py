@@ -14,7 +14,7 @@ from .ref import (
     reref,
     reref_flatten,
     reref_unflatten,
-    update_from,
+    update_refs,
     mutable,
     is_mutable,
     mutable_predicate,
