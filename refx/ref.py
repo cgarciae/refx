@@ -342,7 +342,7 @@ def reref(pytree: A) -> A:
     )
 
 
-def update_from(target_tree: tp.Any, source_tree: tp.Any):
+def update_refs(target_tree: tp.Any, source_tree: tp.Any):
     target_leaves = jtu.tree_leaves(
         target_tree, is_leaf=lambda x: isinstance(x, Referential) or x is NOTHING
     )
@@ -357,7 +357,6 @@ def update_from(target_tree: tp.Any, source_tree: tp.Any):
         )
 
     ref_to_index: tp.Dict[Ref[tp.Any], int] = {}
-    index_to_ref: tp.Dict[int, Ref[tp.Any]] = {}
     source_has_ref = False
     source_has_deref = False
 
@@ -395,13 +394,3 @@ def update_from(target_tree: tp.Any, source_tree: tp.Any):
                 f"Target partition should not contain Deref instances, got "
                 f"'{type(target_leaf).__name__}' at position [{i}]"
             )
-        # elif target_leaf is not NOTHING:
-        #     raise ValueError(
-        #         f"Expected NOTHING target at position [{i}], "
-        #         f"got '{type(target_leaf).__name__}'"
-        #     )
-        # elif source_leaf is not NOTHING:
-        #     raise ValueError(
-        #         f"Expected NOTHING source at position [{i}], "
-        #         f"got '{type(source_leaf).__name__}'"
-        #     )

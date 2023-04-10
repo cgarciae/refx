@@ -61,7 +61,7 @@ class TestPartitioning:
         derered = refx.deref(pytree)
         derered = jax.tree_map(lambda x: x * 2, derered)
 
-        refx.update_from(pytree, derered)
+        refx.update_refs(pytree, derered)
 
         assert pytree["a"][0].value == 2
         assert pytree["a"][1].value == 6
@@ -85,7 +85,7 @@ class TestPartitioning:
             return sum(p.value for p in jax.tree_util.tree_leaves(params))
 
         grad = jax.grad(loss)(refx.deref(params))
-        refx.update_from(params, grad)
+        refx.update_refs(params, grad)
 
         assert pytree["a"][0].value == 2.0
         assert pytree["a"][1].value == -10
