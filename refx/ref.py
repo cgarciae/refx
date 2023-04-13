@@ -68,39 +68,38 @@ NOTHING = Nothing()
 jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
-class Referential:
-    __slots__ = ()
+class Referential(tp.Generic[A]):
+    __slots__ = ("_collection",)
 
-    @property
-    def value(self) -> tp.Any:
-        ...
-
-    @property
-    def collection(self) -> tp.Hashable:
-        ...
-
-
-class Deref(Referential):
-    __slots__ = ()
-
-    @property
-    def collection(self) -> tp.Hashable:
-        ...
-
-
-class Ref(Referential, tp.Generic[A]):
-    __slots__ = ("_value", "_collection", "_jax_trace", "_refx_trace", "_trace_set")
-
-    def __init__(self, value: A, collection: tp.Hashable = None):
-        self._value = value
+    def __init__(self, collection: tp.Hashable):
         self._collection = collection
-        self._jax_trace = tracers.current_jax_trace()
-        self._refx_trace = tracers.current_refx_trace()
-        self._trace_set = frozenset((self._jax_trace, self._refx_trace))
+
+    @property
+    def value(self) -> A:
+        raise NotImplementedError
 
     @property
     def collection(self) -> tp.Hashable:
         return self._collection
+
+
+class Deref(Referential[A]):
+    __slots__ = ()
+
+    @property
+    def value(self) -> A:
+        raise ValueError(f"Cannot get value from '{type(self).__name__}' instances")
+
+
+class Ref(Referential[A]):
+    __slots__ = ("_value", "_collection", "_jax_trace", "_refx_trace", "_trace_set")
+
+    def __init__(self, value: A, collection: tp.Hashable = None):
+        self._value = value
+        self._jax_trace = tracers.current_jax_trace()
+        self._refx_trace = tracers.current_refx_trace()
+        self._trace_set = frozenset((self._jax_trace, self._refx_trace))
+        super().__init__(collection)
 
     @property
     def value(self) -> A:
@@ -131,31 +130,19 @@ class Ref(Referential, tp.Generic[A]):
 
         self._value = value
 
-    @property
-    def index(self) -> int:
-        return -id(self)
-
     def to_value(self) -> "Value[A]":
         return Value(self.value, self.collection)
 
-    def to_index(self) -> "Index":
+    def to_index(self) -> "Index[A]":
         return Index(self.collection)
 
 
-class Value(Deref, tp.Generic[A]):
+class Value(Deref[A]):
     __slots__ = ("_value", "_collection")
 
     def __init__(self, value: A, collection: tp.Hashable):
         self._value = value
-        self._collection = collection
-
-    @property
-    def value(self) -> A:
-        return self._value
-
-    @property
-    def collection(self) -> tp.Hashable:
-        return self._collection
+        super().__init__(collection)
 
     def to_ref(self) -> "Ref[A]":
         return Ref(self._value, self.collection)
@@ -189,25 +176,21 @@ jtu.register_pytree_with_keys(
 )
 
 
-class Index(Deref):
+class Index(Deref[A]):
     __slots__ = "_collection"
 
     def __init__(self, collection: tp.Hashable):
         self._collection = collection
 
-    @property
-    def collection(self) -> tp.Hashable:
-        return self._collection
-
     def __repr__(self) -> str:
         return f"Index(collection={self.collection})"
 
 
-def _index_flatten(x: Index) -> tp.Tuple[tp.Tuple[()], tp.Hashable]:
+def _index_flatten(x: Index[A]) -> tp.Tuple[tp.Tuple[()], tp.Hashable]:
     return (), x.collection
 
 
-def _index_unflatten(colletion: tp.Hashable, children: tp.Tuple[()]) -> Index:
+def _index_unflatten(colletion: tp.Hashable, children: tp.Tuple[()]) -> Index[A]:
     return Index(colletion)
 
 
@@ -403,7 +386,7 @@ def update_refs(target_tree: tp.Any, source_tree: tp.Any):
                     raise ValueError
                 continue
             elif isinstance(source_leaf, (Value, Ref)):
-                target_leaf.value = source_leaf.value
+                target_leaf.value = source_leaf._value
                 seen_target_refs.add(target_leaf)
                 if isinstance(source_leaf, Ref):
                     seen_source_refs.add(source_leaf)
