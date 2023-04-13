@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import contextlib
 import dataclasses
 from functools import partial
@@ -68,15 +69,16 @@ NOTHING = Nothing()
 jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
-class Referential(tp.Generic[A]):
+class Referential(tp.Generic[A], ABC):
     __slots__ = ("_collection",)
 
     def __init__(self, collection: tp.Hashable):
         self._collection = collection
 
     @property
+    @abstractmethod
     def value(self) -> A:
-        raise NotImplementedError
+        ...
 
     @property
     def collection(self) -> tp.Hashable:
@@ -86,13 +88,9 @@ class Referential(tp.Generic[A]):
 class Deref(Referential[A]):
     __slots__ = ()
 
-    @property
-    def value(self) -> A:
-        raise NotImplementedError
-
 
 class Ref(Referential[A]):
-    __slots__ = ("_value", "_collection", "_jax_trace", "_refx_trace", "_trace_set")
+    __slots__ = ("_value", "_jax_trace", "_refx_trace", "_trace_set")
 
     def __init__(self, value: A, collection: tp.Hashable = None):
         self._value = value
@@ -138,7 +136,7 @@ class Ref(Referential[A]):
 
 
 class Value(Deref[A]):
-    __slots__ = ("_value", "_collection")
+    __slots__ = ("_value",)
 
     def __init__(self, value: A, collection: tp.Hashable):
         self._value = value
@@ -146,7 +144,7 @@ class Value(Deref[A]):
 
     @property
     def value(self) -> A:
-        raise self._value
+        return self._value
 
     def to_ref(self) -> "Ref[A]":
         return Ref(self._value, self.collection)
@@ -181,7 +179,7 @@ jtu.register_pytree_with_keys(
 
 
 class Index(Deref[A]):
-    __slots__ = "_collection"
+    __slots__ = ()
 
     def __init__(self, collection: tp.Hashable):
         self._collection = collection
@@ -227,8 +225,49 @@ def _static_unflatten(aux_data: A, _: tp.Tuple[()]) -> Static[A]:
 jtu.register_pytree_node(Static, _static_flatten, _static_unflatten)
 
 
+DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
+DagIndexesList = tp.List[tp.List[int]]
+
+
+class DagDef:
+    __slots__ = ("_indexes", "_treedef")
+
+    def __init__(self, indexes: DagIndexes, treedef: jtu.PyTreeDef):
+        self._indexes = indexes
+        self._treedef = treedef
+
+    def unflatten(self, leaves: Leaves) -> tp.Any:
+        return self._treedef.unflatten(leaves)
+
+    def flatten_up_to(self, __pytree: tp.Any, /) -> Leaves:
+        return self.treedef.flatten_up_to(__pytree)
+
+    @property
+    def indexes(self) -> DagIndexes:
+        return self._indexes
+
+    @property
+    def treedef(self) -> jtu.PyTreeDef:
+        return self._treedef
+
+
+def _dagdef_flatten(
+    x: DagDef,
+) -> tp.Tuple[tp.Tuple[()], tp.Tuple[DagIndexes, jtu.PyTreeDef]]:
+    return (), (x._indexes, x._treedef)
+
+
+def _dagdef_unflatten(
+    metadata: tp.Tuple[DagIndexes, jtu.PyTreeDef], _: tp.Tuple[()]
+) -> DagDef:
+    return DagDef(*metadata)
+
+
+jtu.register_pytree_node(DagDef, _dagdef_flatten, _dagdef_unflatten)
+
+
 class Dag(tp.Generic[A]):
-    __slots__ = "_value"
+    __slots__ = ("_value",)
 
     def __init__(self, value: A):
         self._value = value
@@ -242,20 +281,17 @@ def _dag_flatten(
     x: Dag[tp.Any],
     *,
     with_keys: bool,
-) -> tp.Tuple[tp.Tuple[tp.Any], tp.Tuple["DagDef", jtu.PyTreeDef]]:
-    leaves, dagdef, treedef = deref_flatten(x.value)
+) -> tp.Tuple[tp.Tuple[tp.Any], DagDef]:
+    leaves, dagdef = deref_flatten(x.value)
     if with_keys:
         node = (jtu.GetAttrKey("value"), leaves)
     else:
         node = leaves
-    return (node,), (dagdef, treedef)
+    return (node,), dagdef
 
 
-def _dag_unflatten(
-    metadata: tp.Tuple["DagDef", jtu.PyTreeDef], leaves: Leaves
-) -> Dag[tp.Any]:
-    dagdef, treedef = metadata
-    return Dag(reref_unflatten(treedef, leaves, dagdef))
+def _dag_unflatten(dagdef: DagDef, nodes: tp.Tuple[Leaves]) -> Dag[tp.Any]:
+    return Dag(reref_unflatten(dagdef, nodes[0]))
 
 
 jtu.register_pytree_with_keys(
@@ -264,17 +300,6 @@ jtu.register_pytree_with_keys(
     _dag_unflatten,
     flatten_func=partial(_dag_flatten, with_keys=False),
 )
-
-DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
-DagIndexesList = tp.List[tp.List[int]]
-
-
-class DagDef(Static[DagIndexes]):
-    def __hash__(self) -> int:
-        return hash(self.value)
-
-
-jtu.register_pytree_node(DagDef, _static_flatten, _static_unflatten)
 
 
 def deref_leaves(
@@ -297,13 +322,13 @@ def deref_leaves(
             yield x
 
 
-def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, DagDef, jtu.PyTreeDef]:
+def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, DagDef]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
     indexes = []
     leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
     leaves = list(deref_leaves(ref_index, indexes, leaves))
     indexes = tuple(map(tuple, indexes))
-    return leaves, DagDef(indexes), treedef
+    return leaves, DagDef(indexes, treedef)
 
 
 def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Tuple[A, DagDef]:
@@ -311,12 +336,12 @@ def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Tuple[A, DagDe
     indexes = []
     leaves = list(deref_leaves(ref_index, indexes, leaves))
     indexes = tuple(map(tuple, indexes))
-    return jtu.tree_unflatten(treedef, leaves), Static(indexes)
+    return jtu.tree_unflatten(treedef, leaves), DagDef(indexes, treedef)
 
 
 def deref(pytree: A) -> tp.Tuple[A, DagDef]:
-    leaves, dag_def, treedef = deref_flatten(pytree)
-    return jtu.tree_unflatten(treedef, leaves), dag_def
+    leaves, dagdef = deref_flatten(pytree)
+    return dagdef.unflatten(leaves), dagdef
 
 
 def _validate_reref(x: A) -> A:
@@ -352,21 +377,20 @@ def reref_leaves(indexes: DagIndexes, leaves: Leaves) -> Leaves:
     return leaves_out
 
 
-def reref_flatten(pytree: tp.Any, dagdef: DagDef) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
-    indexes = dagdef.value
-    leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
-    return reref_leaves(indexes, leaves), treedef
+def reref_flatten(pytree: tp.Any, dagdef: DagDef) -> Leaves:
+    indexes = dagdef.indexes
+    leaves = dagdef.treedef.flatten_up_to(pytree)
+    return reref_leaves(indexes, leaves)
 
 
-def reref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves, dagdef: DagDef) -> tp.Any:
-    indexes = dagdef.value
-    leaves = reref_leaves(indexes, leaves)
-    return jtu.tree_unflatten(treedef, leaves)
+def reref_unflatten(dagdef: DagDef, leaves: Leaves) -> tp.Any:
+    leaves = reref_leaves(dagdef.indexes, leaves)
+    return dagdef.unflatten(leaves)
 
 
 def reref(pytree: A, dagdef: DagDef) -> A:
-    leaves, treedef = reref_flatten(pytree, dagdef)
-    return jtu.tree_unflatten(treedef, leaves)
+    leaves = reref_flatten(pytree, dagdef)
+    return dagdef.unflatten(leaves)
 
 
 def update_refs(target_tree: tp.Any, source_tree: tp.Any):
@@ -399,9 +423,9 @@ def update_refs(target_tree: tp.Any, source_tree: tp.Any):
         if isinstance(target_leaf, Ref):
             if target_leaf in seen_target_refs:
                 if isinstance(source_leaf, Ref) and source_leaf not in seen_source_refs:
-                    raise ValueError
+                    raise ValueError()
                 if not isinstance(source_leaf, (Index, Ref)):
-                    raise ValueError
+                    raise ValueError()
                 continue
             elif isinstance(source_leaf, (Value, Ref)):
                 target_leaf.value = source_leaf._value

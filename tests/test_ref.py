@@ -239,3 +239,23 @@ class TestRef:
                 ValueError, match="Collection 'batch_stats' is not mutable"
             ):
                 r2.value = 4
+
+    def test_dag(self):
+        r1 = refx.Ref(1)
+        r2 = refx.Ref(2)
+        v1 = 3
+        pytree = {
+            "a": [r1, r2, v1],
+            "b": {"c": r1, "d": r2},
+        }
+        dag = refx.Dag(pytree)
+
+        @jax.jit
+        def f(dag: refx.Dag):
+            dag.value["a"][0].value = 4
+            return dag
+
+        dag = f(dag)
+
+        assert dag.value["a"][0].value == 4
+        assert dag.value["b"]["c"].value == 4
