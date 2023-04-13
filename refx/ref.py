@@ -257,13 +257,21 @@ jtu.register_pytree_with_keys(
     flatten_func=partial(_dag_flatten, with_keys=False),
 )
 
-DagIndexes = tp.List[tp.List[int]]
-DagDef = Static[DagIndexes]
+DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
+DagIndexesList = tp.List[tp.List[int]]
+
+
+class DagDef(Static[DagIndexes]):
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+
+jtu.register_pytree_node(DagDef, _static_flatten, _static_unflatten)
 
 
 def deref_leaves(
     ref_index: tp.Dict[Ref[tp.Any], int],
-    indexes: DagIndexes,
+    indexes: DagIndexesList,
     leaves: Leaves,
 ) -> tp.Iterator[tp.Any]:
     for leaf_idx, x in enumerate(leaves):
@@ -283,16 +291,18 @@ def deref_leaves(
 
 def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, DagDef, jtu.PyTreeDef]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    indexes: DagIndexes = []
+    indexes = []
     leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
     leaves = list(deref_leaves(ref_index, indexes, leaves))
-    return leaves, Static(indexes), treedef
+    indexes = tuple(map(tuple, indexes))
+    return leaves, DagDef(indexes), treedef
 
 
 def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Tuple[A, DagDef]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    indexes: DagIndexes = []
+    indexes = []
     leaves = list(deref_leaves(ref_index, indexes, leaves))
+    indexes = tuple(map(tuple, indexes))
     return jtu.tree_unflatten(treedef, leaves), Static(indexes)
 
 
