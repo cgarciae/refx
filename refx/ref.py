@@ -88,7 +88,7 @@ class Deref(Referential[A]):
 
     @property
     def value(self) -> A:
-        raise ValueError(f"Cannot get value from '{type(self).__name__}' instances")
+        raise NotImplementedError
 
 
 class Ref(Referential[A]):
@@ -144,6 +144,10 @@ class Value(Deref[A]):
         self._value = value
         super().__init__(collection)
 
+    @property
+    def value(self) -> A:
+        raise self._value
+
     def to_ref(self) -> "Ref[A]":
         return Ref(self._value, self.collection)
 
@@ -181,6 +185,10 @@ class Index(Deref[A]):
 
     def __init__(self, collection: tp.Hashable):
         self._collection = collection
+
+    @property
+    def value(self) -> A:
+        raise ValueError(f"Cannot get value from '{type(self).__name__}' instances")
 
     def __repr__(self) -> str:
         return f"Index(collection={self.collection})"
