@@ -9,14 +9,13 @@ from simple_pytree import Pytree
 import refx
 
 
-def field(
-    default: tp.Any = dataclasses.MISSING, *, collection: tp.Hashable = None, **kwargs
-):
-    metadata = {"pytree_node": True, "collection": collection}
-    return refx.field(default=default, **kwargs, metadata=metadata)
+def ref(
+    *, default: tp.Any = dataclasses.MISSING, collection: tp.Hashable = None, **kwargs
+) -> tp.Any:
+    return refx.RefField(collection=collection, default=default, **kwargs)
 
 
-@tpe.dataclass_transform(field_specifiers=(field,))
+@tpe.dataclass_transform(field_specifiers=(ref,))
 def dataclass(*args, **kwargs):
     return dataclasses.dataclass(*args, **kwargs)
 
@@ -25,7 +24,7 @@ class TestRefField:
     def test_ref_field_dataclass(self):
         @dataclass
         class Foo(Pytree):
-            a: int = field()
+            a: int = ref()
 
         foo1 = Foo(a=1)
         foo1.a = 2
@@ -43,7 +42,7 @@ class TestRefField:
     def test_cannot_change_ref(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = ref_field()
+            a: int = ref()
 
         foo1 = Foo(a=1)
 
@@ -52,10 +51,10 @@ class TestRefField:
 
     def test_ref_field_normal_class(self):
         class Foo(Pytree):
-            a: int = ref_field()
+            a: int = ref()
 
             def __init__(self, a: int):
-                pass
+                self.a = a
 
         foo1 = Foo(a=1)
         foo1.a = 2
@@ -72,7 +71,7 @@ class TestRefField:
 
     def test_unset_field(self):
         class Foo(Pytree):
-            a = ref_field()
+            a = ref()
 
         foo1 = Foo()
 
@@ -82,16 +81,16 @@ class TestRefField:
     def test_barrier(self):
         @dataclasses.dataclass
         class Foo(Pytree):
-            a: int = ref_field()
+            a: int = ref()
 
         foo1 = Foo(a=1)
 
         @jax.jit
-        def g(foo2: Foo):
-            foo2 = refx.reref(foo2)
+        def g(foo2: Foo, dagdef: refx.DagDef):
+            foo2 = refx.reref(foo2, dagdef)
             foo2.a += 1
             return refx.deref(foo2)
 
-        foo2 = refx.reref(g(refx.deref(foo1)))
+        foo2 = refx.reref(*g(*refx.deref(foo1)))
         assert foo1.a == 1
         assert foo2.a == 2

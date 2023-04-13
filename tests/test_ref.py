@@ -11,9 +11,9 @@ class TestRef:
     def test_slots(self):
         ref = refx.Ref(1)
         assert not hasattr(ref, "__dict__")
-        value = refx.Value(1, 0, None)
+        value = refx.Value(1, None)
         assert not hasattr(value, "__dict__")
-        index = refx.Index(0, None)
+        index = refx.Index(None)
         assert not hasattr(index, "__dict__")
 
     def test_ref(self):
@@ -36,8 +36,8 @@ class TestRef:
         assert r2.value == 3
 
     def test_value_and_index_are_deref(self):
-        value = refx.Value(1, 0, None)
-        index = refx.Index(0, None)
+        value = refx.Value(1, None)
+        index = refx.Index(None)
 
         assert isinstance(value, refx.Deref)
         assert isinstance(index, refx.Deref)
@@ -56,8 +56,8 @@ class TestRef:
         f()
 
         @jax.jit
-        def g(r2, r3):
-            r2, r3 = refx.reref((r2, r3))
+        def g(pytree, dagdef):
+            r2, r3 = refx.reref(pytree, dagdef)
             assert r2 is r3
 
             r2.value = 2
@@ -65,7 +65,7 @@ class TestRef:
             assert r3.value == 2
             return refx.deref(r2)
 
-        r2 = refx.reref(g(*refx.deref((r1, r1))))
+        r2 = refx.reref(*g(*refx.deref((r1, r1))))
 
         assert r1.value == 1
         assert r2.value == 2
@@ -74,7 +74,7 @@ class TestRef:
         assert r1.value == 1
         assert r2.value == 3
 
-        r3 = refx.reref(g(*refx.deref((r1, r1))))
+        r3 = refx.reref(*g(*refx.deref((r1, r1))))
 
         assert r3 is not r2
         assert r3.value == 2
@@ -100,16 +100,16 @@ class TestRef:
         pytree = pytree0 = {"a": [r1, r2], "b": r1}
 
         @jax.jit
-        def f(pytree):
-            pytree = refx.reref(pytree)
+        def f(pytree, dagdef):
+            pytree = refx.reref(pytree, dagdef)
 
             assert pytree["a"][0] is pytree["b"]
             assert pytree["a"][1] is not pytree["b"]
 
             return refx.deref(pytree)
 
-        pytree = f(refx.deref(pytree))
-        pytree = refx.reref(pytree)
+        pytree, dagdef = f(*refx.deref(pytree))
+        pytree = refx.reref(pytree, dagdef)
 
         assert pytree["a"][0] is pytree["b"]
         assert pytree["a"][1] is not pytree["b"]
@@ -154,18 +154,18 @@ class TestRef:
         r1: refx.Ref[int] = refx.Ref(1)
 
         @jax.jit
-        def g(r2):
-            r2 = refx.reref(r2)
+        def g(r2, dagdef):
+            r2 = refx.reref(r2, dagdef)
             r2.value += 1
             assert r1 is not r2
             return refx.deref(r2)
 
-        r2 = refx.reref(g(refx.deref(r1)))
+        r2 = refx.reref(*g(*refx.deref(r1)))
         assert r1 is not r2
         assert r1.value == 1
         assert r2.value == 2
 
-        r3 = refx.reref(g(refx.deref(r2)))
+        r3 = refx.reref(*g(*refx.deref(r2)))
         assert r1 is not r2
         assert r2 is not r3
         assert r1.value == 1
@@ -189,15 +189,15 @@ class TestRef:
         r2 = refx.Ref(2)
 
         @jax.jit
-        def g(r3, r4, r5):
-            r3, r4, r5 = refx.reref((r3, r4, r5))
+        def g(pytree, dagdef):
+            r3, r4, r5 = refx.reref(pytree, dagdef)
             nonlocal n
             n += 1
             assert r3 is r4
             assert r4 is not r5
             return refx.deref(r3)
 
-        r6 = refx.reref(g(*refx.deref((r1, r1, r2))))
+        r6 = refx.reref(*g(*refx.deref((r1, r1, r2))))
         assert r6 is not r1
         assert r6.value == r1.value
         assert n == 1
@@ -223,10 +223,10 @@ class TestRef:
         }
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
 
-        pytree = refx.deref(pytree)
+        pytree, dagdef = refx.deref(pytree)
         assert len(jax.tree_util.tree_leaves(pytree)) == 3
 
-        pytree = refx.reref(pytree)
+        pytree = refx.reref(pytree, dagdef)
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
 
     def test_mutable(self):

@@ -1,7 +1,8 @@
-from .partitioning import get_partition, merge_partitions, tree_partition, Partition
+from .partitioning import Partition, get_partition, merge_partitions, tree_partition
 from .ref import (
     NOTHING,
     Dag,
+    DagDef,
     Deref,
     Index,
     Ref,
@@ -11,12 +12,12 @@ from .ref import (
     deref,
     deref_flatten,
     deref_unflatten,
+    is_mutable,
+    mutable,
+    mutable_predicate,
     reref,
     reref_flatten,
     reref_unflatten,
     update_refs,
-    mutable,
-    is_mutable,
-    mutable_predicate,
 )
 from .ref_field import RefField

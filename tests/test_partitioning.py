@@ -58,7 +58,7 @@ class TestPartitioning:
             "c": 100,
         }
 
-        derered = refx.deref(pytree)
+        derered, dagdef = refx.deref(pytree)
         derered = jax.tree_map(lambda x: x * 2, derered)
 
         refx.update_refs(pytree, derered)
@@ -80,11 +80,11 @@ class TestPartitioning:
 
         params = refx.get_partition(pytree, has_collection("params"))
 
-        def loss(params):
-            params = refx.reref(params)
+        def loss(params, dagdef):
+            params = refx.reref(params, dagdef)
             return sum(p.value for p in jax.tree_util.tree_leaves(params))
 
-        grad = jax.grad(loss)(refx.deref(params))
+        grad = jax.grad(loss)(*refx.deref(params))
         refx.update_refs(params, grad)
 
         assert pytree["a"][0].value == 2.0

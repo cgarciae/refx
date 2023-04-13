@@ -72,7 +72,7 @@ class Referential:
     __slots__ = ()
 
     @property
-    def index(self) -> int:
+    def value(self) -> tp.Any:
         ...
 
     @property
@@ -82,10 +82,6 @@ class Referential:
 
 class Deref(Referential):
     __slots__ = ()
-
-    @property
-    def index(self) -> int:
-        ...
 
     @property
     def collection(self) -> tp.Hashable:
@@ -139,19 +135,18 @@ class Ref(Referential, tp.Generic[A]):
     def index(self) -> int:
         return -id(self)
 
-    def to_value(self, index: int) -> "Value[A]":
-        return Value(self.value, index, self.collection)
+    def to_value(self) -> "Value[A]":
+        return Value(self.value, self.collection)
 
-    def to_index(self, index: int) -> "Index":
-        return Index(index, self.collection)
+    def to_index(self) -> "Index":
+        return Index(self.collection)
 
 
 class Value(Deref, tp.Generic[A]):
-    __slots__ = ("_value", "_index", "_collection")
+    __slots__ = ("_value", "_collection")
 
-    def __init__(self, value: A, index: int, collection: tp.Hashable):
+    def __init__(self, value: A, collection: tp.Hashable):
         self._value = value
-        self._index = index
         self._collection = collection
 
     @property
@@ -159,62 +154,61 @@ class Value(Deref, tp.Generic[A]):
         return self._value
 
     @property
-    def index(self) -> int:
-        return self._index
-
-    @property
     def collection(self) -> tp.Hashable:
         return self._collection
 
     def to_ref(self) -> "Ref[A]":
-        return Ref(self.value, self.collection)
+        return Ref(self._value, self.collection)
 
     def __repr__(self) -> str:
-        return f"Value(index={self.index}, collection={repr(self.collection)})"
+        return f"Value(collection={repr(self.collection)}, value={repr(self._value)})"
 
 
-def _value_flatten_with_keys(
+def _value_flatten(
     x: Value[A],
-) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, A]], tp.Tuple[int, tp.Hashable]]:
-    return ((jtu.GetAttrKey("value"), x.value),), (x.index, x.collection)
+    *,
+    with_keys: bool,
+) -> tp.Tuple[tp.Tuple[tp.Any], tp.Hashable]:
+    if with_keys:
+        node = (jtu.GetAttrKey("value"), x._value)
+    else:
+        node = x._value
+
+    return (node,), x.collection
 
 
-def _value_unflatten(
-    aux_data: tp.Tuple[int, tp.Hashable], children: tp.Tuple[A]
-) -> Value[A]:
-    return Value(children[0], *aux_data)
+def _value_unflatten(collection: tp.Hashable, children: tp.Tuple[A]) -> Value[A]:
+    return Value(children[0], collection)
 
 
-jtu.register_pytree_with_keys(Value, _value_flatten_with_keys, _value_unflatten)
+jtu.register_pytree_with_keys(
+    Value,
+    partial(_value_flatten, with_keys=True),
+    _value_unflatten,
+    flatten_func=partial(_value_flatten, with_keys=False),
+)
 
 
 class Index(Deref):
-    __slots__ = ("_index", "_collection")
+    __slots__ = "_collection"
 
-    def __init__(self, index: int, collection: tp.Hashable):
-        self._index = index
+    def __init__(self, collection: tp.Hashable):
         self._collection = collection
-
-    @property
-    def index(self) -> int:
-        return self._index
 
     @property
     def collection(self) -> tp.Hashable:
         return self._collection
 
     def __repr__(self) -> str:
-        return f"Index(index={self.index}, collection={self.collection})"
+        return f"Index(collection={self.collection})"
 
 
-def _index_flatten(x: Index) -> tp.Tuple[tp.Tuple[()], tp.Tuple[int, tp.Hashable]]:
-    return (), (x.index, x.collection)
+def _index_flatten(x: Index) -> tp.Tuple[tp.Tuple[()], tp.Hashable]:
+    return (), x.collection
 
 
-def _index_unflatten(
-    aux_data: tp.Tuple[int, tp.Hashable], children: tp.Tuple[()]
-) -> Index:
-    return Index(*aux_data)
+def _index_unflatten(colletion: tp.Hashable, children: tp.Tuple[()]) -> Index:
+    return Index(colletion)
 
 
 jtu.register_pytree_node(Index, _index_flatten, _index_unflatten)
@@ -243,7 +237,7 @@ jtu.register_pytree_node(Static, _static_flatten, _static_unflatten)
 
 
 class Dag(tp.Generic[A]):
-    __slots__ = ("_value",)
+    __slots__ = "_value"
 
     def __init__(self, value: A):
         self._value = value
@@ -253,93 +247,125 @@ class Dag(tp.Generic[A]):
         return self._value
 
 
-def _dag_flatten_with_keys(
+def _dag_flatten(
     x: Dag[tp.Any],
-) -> tp.Tuple[tp.Tuple[tp.Tuple[jtu.GetAttrKey, Leaves]], jtu.PyTreeDef]:
-    leaves, treedef = deref_flatten(x.value)
-    key_node = (jtu.GetAttrKey("value"), leaves)
-    return (key_node,), treedef
-
-
-def _dag_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> Dag[tp.Any]:
-    return Dag(reref_unflatten(treedef, leaves))
-
-
-jtu.register_pytree_with_keys(Dag, _dag_flatten_with_keys, _dag_unflatten)
-
-
-def deref_fn(ref_index: tp.Dict[Ref[tp.Any], int], x: tp.Any) -> tp.Any:
-    if isinstance(x, Ref):
-        if x not in ref_index:
-            index = len(ref_index)
-            ref_index[x] = index
-            return x.to_value(index)
-        else:
-            return x.to_index(ref_index[x])
-    elif isinstance(x, Deref) and ref_index:
-        raise ValueError("Cannot 'deref' pytree containing Derefs")
+    *,
+    with_keys: bool,
+) -> tp.Tuple[tp.Tuple[tp.Any], tp.Tuple["DagDef", jtu.PyTreeDef]]:
+    leaves, dagdef, treedef = deref_flatten(x.value)
+    if with_keys:
+        node = (jtu.GetAttrKey("value"), leaves)
     else:
-        return x
+        node = leaves
+    return (node,), (dagdef, treedef)
 
 
-def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
+def _dag_unflatten(
+    metadata: tp.Tuple["DagDef", jtu.PyTreeDef], leaves: Leaves
+) -> Dag[tp.Any]:
+    dagdef, treedef = metadata
+    return Dag(reref_unflatten(treedef, leaves, dagdef))
+
+
+jtu.register_pytree_with_keys(
+    Dag,
+    partial(_dag_flatten, with_keys=True),
+    _dag_unflatten,
+    flatten_func=partial(_dag_flatten, with_keys=False),
+)
+
+DagIndexes = tp.List[tp.List[int]]
+DagDef = Static[DagIndexes]
+
+
+def deref_leaves(
+    ref_index: tp.Dict[Ref[tp.Any], int],
+    indexes: DagIndexes,
+    leaves: Leaves,
+) -> tp.Iterator[tp.Any]:
+    for leaf_idx, x in enumerate(leaves):
+        if isinstance(x, Ref):
+            if x not in ref_index:
+                ref_index[x] = len(ref_index)
+                indexes.append([leaf_idx])
+                yield x.to_value()
+            else:
+                indexes[ref_index[x]].append(leaf_idx)
+                yield x.to_index()
+        elif isinstance(x, Deref):
+            raise ValueError("Cannot 'deref' pytree containing Derefs")
+        else:
+            yield x
+
+
+def deref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, DagDef, jtu.PyTreeDef]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
+    indexes: DagIndexes = []
     leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
-    return list(map(partial(deref_fn, ref_index), leaves)), treedef
+    leaves = list(deref_leaves(ref_index, indexes, leaves))
+    return leaves, Static(indexes), treedef
 
 
-def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> A:
+def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Tuple[A, DagDef]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    leaves = list(map(partial(deref_fn, ref_index), leaves))
-    return jtu.tree_unflatten(treedef, leaves)
+    indexes: DagIndexes = []
+    leaves = list(deref_leaves(ref_index, indexes, leaves))
+    return jtu.tree_unflatten(treedef, leaves), Static(indexes)
 
 
-def deref(pytree: A) -> A:
-    ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    return jax.tree_map(
-        partial(deref_fn, ref_index), pytree, is_leaf=lambda x: isinstance(x, Deref)
-    )
+def deref(pytree: A) -> tp.Tuple[A, DagDef]:
+    leaves, dag_def, treedef = deref_flatten(pytree)
+    return jtu.tree_unflatten(treedef, leaves), dag_def
 
 
-def reref_fn(index_ref: tp.Dict[int, Ref[tp.Any]], x: tp.Any) -> tp.Any:
+def _validate_reref(x: A) -> A:
     if isinstance(x, Ref):
         raise ValueError("Cannot 'reref' pytree containing Refs")
-    elif isinstance(x, Value):
-        if x.index in index_ref:
-            raise ValueError("Value already exists")
-        ref = x.to_ref()
-        index_ref[x.index] = ref
-        return ref
-    elif isinstance(x, Index):
-        if x.index not in index_ref:
-            # NOTE: because pytree flatten and unflatten in a deterministic
-            # order, this should never trigger
-            raise RuntimeError(
-                "BUG: Got multiple values for the same index. This should never "
-                "happen, please report it."
+
+    return x
+
+
+def reref_leaves(indexes: DagIndexes, leaves: Leaves) -> Leaves:
+    leaves_out = list(map(_validate_reref, leaves))
+
+    for leaf_indexes in indexes:
+        leaf_index = leaf_indexes[0]
+        value = leaves[leaf_index]
+
+        if not isinstance(value, Value):
+            raise ValueError(
+                f"Expected 'Value' as first leaf, got {type(value).__name__}"
             )
-        return index_ref[x.index]
-    else:
-        return x
+
+        ref = value.to_ref()
+        leaves_out[leaf_index] = ref
+
+        for leaf_index in leaf_indexes[1:]:
+            x = leaves[leaf_index]
+
+            if not isinstance(x, Index):
+                raise ValueError(f"Expected 'Index' as leaf, got {type(x).__name__}")
+
+            leaves_out[leaf_index] = ref
+
+    return leaves_out
 
 
-def reref_flatten(pytree: tp.Any) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
-    index_ref: tp.Dict[int, Ref[tp.Any]] = {}
+def reref_flatten(pytree: tp.Any, dagdef: DagDef) -> tp.Tuple[Leaves, jtu.PyTreeDef]:
+    indexes = dagdef.value
     leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
-    return list(map(partial(reref_fn, index_ref), leaves)), treedef
+    return reref_leaves(indexes, leaves), treedef
 
 
-def reref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Any:
-    index_ref: tp.Dict[int, Ref[tp.Any]] = {}
-    leaves = list(map(partial(reref_fn, index_ref), leaves))
+def reref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves, dagdef: DagDef) -> tp.Any:
+    indexes = dagdef.value
+    leaves = reref_leaves(indexes, leaves)
     return jtu.tree_unflatten(treedef, leaves)
 
 
-def reref(pytree: A) -> A:
-    index_ref: tp.Dict[int, Ref[tp.Any]] = {}
-    return jax.tree_map(
-        partial(reref_fn, index_ref), pytree, is_leaf=lambda x: isinstance(x, Deref)
-    )
+def reref(pytree: A, dagdef: DagDef) -> A:
+    leaves, treedef = reref_flatten(pytree, dagdef)
+    return jtu.tree_unflatten(treedef, leaves)
 
 
 def update_refs(target_tree: tp.Any, source_tree: tp.Any):
@@ -356,7 +382,8 @@ def update_refs(target_tree: tp.Any, source_tree: tp.Any):
             f"{len(target_leaves)} and {len(source_leaves)}"
         )
 
-    ref_to_index: tp.Dict[Ref[tp.Any], int] = {}
+    seen_target_refs: tp.Set[Ref[tp.Any]] = set()
+    seen_source_refs: tp.Set[Ref[tp.Any]] = set()
     source_has_ref = False
     source_has_deref = False
 
@@ -369,20 +396,21 @@ def update_refs(target_tree: tp.Any, source_tree: tp.Any):
             raise ValueError("Got source with mixed Ref and Deref instances")
 
         if isinstance(target_leaf, Ref):
-            if target_leaf in ref_to_index:
-                if isinstance(source_leaf, (Ref, Index)):
-                    if ref_to_index[target_leaf] != source_leaf.index:
-                        raise ValueError
-                else:
+            if target_leaf in seen_target_refs:
+                if isinstance(source_leaf, Ref) and source_leaf not in seen_source_refs:
+                    raise ValueError
+                if not isinstance(source_leaf, (Index, Ref)):
                     raise ValueError
                 continue
             elif isinstance(source_leaf, (Value, Ref)):
                 target_leaf.value = source_leaf.value
-                ref_to_index[target_leaf] = source_leaf.index
+                seen_target_refs.add(target_leaf)
+                if isinstance(source_leaf, Ref):
+                    seen_source_refs.add(source_leaf)
             elif isinstance(source_leaf, Index):
                 raise ValueError(
                     f"Unseen Ref '{type(target_leaf).__name__}' at position [{i}] "
-                    f"aligned with source 'Index(index={source_leaf.index})'"
+                    f"aligned with source '{source_leaf}'"
                 )
             else:
                 raise ValueError(
