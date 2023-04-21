@@ -259,3 +259,17 @@ class TestRef:
 
         assert dag.value["a"][0].value == 4
         assert dag.value["b"]["c"].value == 4
+
+    def test_clone(self):
+        r1 = refx.Ref(1)
+        r2 = refx.Ref(2)
+        v1 = 3
+        pytree = {
+            "a": [r1, r2, v1],
+            "b": {"c": r1, "d": r2},
+        }
+
+        pytree2 = refx.clone(pytree)
+
+        pytree["a"][0].value = 10
+        assert pytree2["a"][0].value == 1

@@ -9,6 +9,7 @@ from .ref import (
     Referential,
     Static,
     Value,
+    clone,
     deref,
     deref_flatten,
     deref_unflatten,

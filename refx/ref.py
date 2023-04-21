@@ -250,6 +250,14 @@ class DagDef:
     def treedef(self) -> jtu.PyTreeDef:
         return self._treedef
 
+    def __hash__(self) -> int:
+        return hash((self._indexes, self._treedef))
+
+    def __eq__(self, other: tp.Any) -> bool:
+        if not isinstance(other, DagDef):
+            return ValueError(f"Cannot compare DagDef with {type(other)}")
+        return self._indexes == other._indexes and self._treedef == other._treedef
+
 
 def _dagdef_flatten(
     x: DagDef,
@@ -291,7 +299,7 @@ def _dag_flatten(
 
 
 def _dag_unflatten(dagdef: DagDef, nodes: tp.Tuple[Leaves]) -> Dag[tp.Any]:
-    return Dag(reref_unflatten(dagdef, nodes[0]))
+    return Dag(reref_unflatten(nodes[0], dagdef))
 
 
 jtu.register_pytree_with_keys(
@@ -383,7 +391,7 @@ def reref_flatten(pytree: tp.Any, dagdef: DagDef) -> Leaves:
     return reref_leaves(indexes, leaves)
 
 
-def reref_unflatten(dagdef: DagDef, leaves: Leaves) -> tp.Any:
+def reref_unflatten(leaves: Leaves, dagdef: DagDef) -> tp.Any:
     leaves = reref_leaves(dagdef.indexes, leaves)
     return dagdef.unflatten(leaves)
 
@@ -391,6 +399,10 @@ def reref_unflatten(dagdef: DagDef, leaves: Leaves) -> tp.Any:
 def reref(pytree: A, dagdef: DagDef) -> A:
     leaves = reref_flatten(pytree, dagdef)
     return dagdef.unflatten(leaves)
+
+
+def clone(pytree: A) -> A:
+    return reref_unflatten(*deref_flatten(pytree))
 
 
 def update_refs(target_tree: tp.Any, source_tree: tp.Any):
