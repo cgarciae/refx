@@ -27,7 +27,7 @@ class RefField(dataclasses.Field, tp.Generic[A]):
         self._first_get_call = True
         self.class_field_name: tp.Optional[str] = None
 
-    def __set_name__(self, owner, name):
+    def __set_name__(self, cls, name):
         """__set_name__ initializer for properties as per [PEP-487](https://peps.python.org/pep-0487/)"""
         self.class_field_name = name
 
@@ -41,7 +41,7 @@ class RefField(dataclasses.Field, tp.Generic[A]):
                 self._first_get_call = False
                 return self
             else:
-                raise AttributeError
+                return
 
         if not hasattr(obj, self.object_field_name):
             raise AttributeError(f"Attribute '{self.class_field_name}' is not set")
